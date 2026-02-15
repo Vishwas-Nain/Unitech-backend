@@ -1,8 +1,8 @@
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const pool = require('./config/database');
 require('dotenv').config();
 
 const app = express();
@@ -28,23 +28,16 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// MongoDB connection
-const mongoOptions = {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-  retryWrites: true,
-  w: 'majority'
-};
-
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/unitech', mongoOptions)
-.then(() => {
-  console.log('✅ Connected to MongoDB Atlas');
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-})
-.catch((error) => {
-  console.error('❌ MongoDB connection error:', error);
-  console.log('💡 Please check your MONGODB_URI in .env file');
-  process.exit(1);
+// PostgreSQL connection test
+pool.query('SELECT NOW()', (err, res) => {
+  if (err) {
+    console.error('❌ PostgreSQL connection error:', err);
+    console.log('💡 Please check your DATABASE_URL in .env file');
+    process.exit(1);
+  } else {
+    console.log('✅ Connected to Neon PostgreSQL');
+    console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  }
 });
 
 // Routes
