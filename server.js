@@ -29,12 +29,21 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // MongoDB connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/unitech')
+const mongoOptions = {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  retryWrites: true,
+  w: 'majority'
+};
+
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/unitech', mongoOptions)
 .then(() => {
-  console.log('✅ Connected to MongoDB');
+  console.log('✅ Connected to MongoDB Atlas');
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 })
 .catch((error) => {
   console.error('❌ MongoDB connection error:', error);
+  console.log('💡 Please check your MONGODB_URI in .env file');
   process.exit(1);
 });
 
