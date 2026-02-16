@@ -64,17 +64,11 @@ router.post('/register',
       const otp = Math.floor(100000 + Math.random() * 900000).toString();
       await UserPostgres.createEmailOTP(user.id, otp);
 
-      // Send OTP via email
-      const emailResult = await sendOtpViaEmail(email, otp, 'registration');
-      
-      // Always show OTP in console for development/testing
+      // Show OTP in console for development/testing
       console.log(`🔢 OTP for ${email}: ${otp}`);
       
-      if (!emailResult.success) {
-        console.error('Failed to send OTP:', emailResult.error);
-        // Continue registration even if email fails
-        console.log('⚠️ Email service failed, but registration completed');
-      }
+      // Skip email service for now to avoid timeouts
+      console.log('⚠️ Email service skipped for development');
 
       res.status(201).json({
         success: true,
@@ -152,16 +146,11 @@ router.post('/login',
         const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
         await UserPostgres.createEmailOTP(user.id, newOtp);
         
-        // Always show OTP in console for development/testing
+        // Show OTP in console for development/testing
         console.log(`🔢 OTP for ${user.email}: ${newOtp}`);
         
-        // Send OTP via email
-        const emailResult = await sendOtpViaEmail(user.email, newOtp, 'login');
-        
-        if (!emailResult.success) {
-          console.error('Failed to send OTP:', emailResult.error);
-          console.log('⚠️ Email service failed, but OTP generated');
-        }
+        // Skip email service for now to avoid timeouts
+        console.log('⚠️ Email service skipped for development');
         
         return res.status(200).json({
           success: true,
