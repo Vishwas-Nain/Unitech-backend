@@ -5,7 +5,7 @@ const { body, validationResult } = require('express-validator');
 const UserPostgres = require('../models/UserPostgres');
 const { protect } = require('../middleware/auth');
 const { sendOtpViaSms } = require('../utils/smsService');
-const { sendOtpViaEmail, sendWelcomeEmail } = require('../utils/emailService');
+const brevoEmailService = require('../utils/brevoEmailService');
 
 // Generate JWT Token
 const generateToken = (id) => {
@@ -67,18 +67,18 @@ router.post('/register',
       // Show OTP in console for development/testing
       console.log(`🔢 OTP for ${email}: ${otp}`);
       
-      // Send OTP via email with timeout handling
+      // Send OTP via email with Brevo
       try {
-        const emailPromise = sendOtpViaEmail(email, otp, 'registration');
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Email timeout')), 5000) // 5 second timeout
-        );
+        const emailResult = await brevoEmailService.sendOTP(email, otp, 'registration');
         
-        await Promise.race([emailPromise, timeoutPromise]);
-        console.log('✅ Email sent successfully');
+        if (!emailResult.success) {
+          console.error('⚠️ Brevo email service failed:', emailResult.error);
+          console.log('📧 Registration completed, but email delivery failed');
+        } else {
+          console.log('✅ Email sent successfully via Brevo');
+        }
       } catch (emailError) {
-        console.error('⚠️ Email service failed:', emailError.message);
-        // Continue registration even if email fails
+        console.error('⚠️ Email service error:', emailError.message);
         console.log('📧 Registration completed, but email delivery failed');
       }
 
@@ -161,17 +161,18 @@ router.post('/login',
         // Show OTP in console for development/testing
         console.log(`🔢 OTP for ${user.email}: ${newOtp}`);
         
-        // Send OTP via email with timeout handling
+        // Send OTP via email with Brevo
         try {
-          const emailPromise = sendOtpViaEmail(user.email, newOtp, 'login');
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Email timeout')), 5000) // 5 second timeout
-          );
+          const emailResult = await brevoEmailService.sendOTP(user.email, newOtp, 'login');
           
-          await Promise.race([emailPromise, timeoutPromise]);
-          console.log('✅ Email sent successfully');
+          if (!emailResult.success) {
+            console.error('⚠️ Brevo email service failed:', emailResult.error);
+            console.log('📧 OTP generated, but email delivery failed');
+          } else {
+            console.log('✅ Email sent successfully via Brevo');
+          }
         } catch (emailError) {
-          console.error('⚠️ Email service failed:', emailError.message);
+          console.error('⚠️ Email service error:', emailError.message);
           console.log('📧 OTP generated, but email delivery failed');
         }
         
@@ -378,7 +379,7 @@ router.post('/send-email-otp',
       await user.save();
 
       // Send OTP via email
-      const emailResult = await sendOtpViaEmail(email, otp, 'login');
+      const emailResult = await brevoEmailService.sendOTP(email, otp, 'login');
       
       if (!emailResult.success) {
         console.error('Failed to send OTP:', emailResult.error);
@@ -444,7 +445,7 @@ router.post('/verify-email-otp',
 
       // Send welcome email if this is a new registration
       if (!user.last_otp_sent || (Date.now() - new Date(user.last_otp_sent).getTime()) < 10 * 60 * 1000) {
-        await sendWelcomeEmail(user.email, user.name);
+        await brevoEmailService.sendWelcomeEmail(user.email, user.name);
       }
 
       // Generate JWT token
