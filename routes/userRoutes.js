@@ -68,10 +68,15 @@ router.post('/register',
       const emailResult = await sendOtpViaEmail(email, otp, 'registration');
       if (!emailResult.success) {
         console.error('Failed to send OTP:', emailResult.error);
-        return res.status(500).json({ 
-          success: false,
-          message: 'Failed to send OTP. Please try again.'
-        });
+        // In development, continue without email
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`Development mode - OTP for ${email}: ${otp}`);
+        } else {
+          return res.status(500).json({ 
+            success: false,
+            message: 'Failed to send OTP. Please try again.'
+          });
+        }
       }
 
       res.status(201).json({
