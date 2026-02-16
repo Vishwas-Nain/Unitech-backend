@@ -67,8 +67,20 @@ router.post('/register',
       // Show OTP in console for development/testing
       console.log(`🔢 OTP for ${email}: ${otp}`);
       
-      // Skip email service for now to avoid timeouts
-      console.log('⚠️ Email service skipped for development');
+      // Send OTP via email with timeout handling
+      try {
+        const emailPromise = sendOtpViaEmail(email, otp, 'registration');
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Email timeout')), 5000) // 5 second timeout
+        );
+        
+        await Promise.race([emailPromise, timeoutPromise]);
+        console.log('✅ Email sent successfully');
+      } catch (emailError) {
+        console.error('⚠️ Email service failed:', emailError.message);
+        // Continue registration even if email fails
+        console.log('📧 Registration completed, but email delivery failed');
+      }
 
       res.status(201).json({
         success: true,
@@ -149,8 +161,19 @@ router.post('/login',
         // Show OTP in console for development/testing
         console.log(`🔢 OTP for ${user.email}: ${newOtp}`);
         
-        // Skip email service for now to avoid timeouts
-        console.log('⚠️ Email service skipped for development');
+        // Send OTP via email with timeout handling
+        try {
+          const emailPromise = sendOtpViaEmail(user.email, newOtp, 'login');
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Email timeout')), 5000) // 5 second timeout
+          );
+          
+          await Promise.race([emailPromise, timeoutPromise]);
+          console.log('✅ Email sent successfully');
+        } catch (emailError) {
+          console.error('⚠️ Email service failed:', emailError.message);
+          console.log('📧 OTP generated, but email delivery failed');
+        }
         
         return res.status(200).json({
           success: true,
