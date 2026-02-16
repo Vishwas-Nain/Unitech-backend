@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const ProductPostgres = require('./ProductPostgres');
 
 class CartPostgres {
   static async getUserCart(userId) {
@@ -52,18 +53,15 @@ class CartPostgres {
   }
 
   static async addToCart(userId, productId, quantity) {
-    // Check if product exists and has stock
-    const productQuery = 'SELECT id, name, price, stock FROM products WHERE id = $1 AND is_active = true';
-    const productResult = await pool.query(productQuery, [productId]);
+    // Check if product exists and has stock using ProductPostgres
+    const product = await ProductPostgres.findById(productId);
     
-    if (productResult.rows.length === 0) {
+    if (!product) {
       throw new Error('Product not found');
     }
     
-    const product = productResult.rows[0];
-    
     if (product.stock < quantity) {
-      throw new Error('Insufficient stock');
+      throw new Error(`Insufficient stock. Only ${product.stock} items available.`);
     }
     
     // Check if item already in cart

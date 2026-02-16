@@ -1,6 +1,7 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const CartPostgres = require('../models/CartPostgres');
+const ProductPostgres = require('../models/ProductPostgres');
 const { protect } = require('../middleware/auth');
 
 const router = express.Router();
