@@ -60,9 +60,6 @@ router.post('/register',
         isVerified: false // Explicitly set to false
       });
 
-      // Hash password
-      const salt = await bcrypt.genSalt(10);
-
       // Generate and save email OTP
       const otp = user.createEmailOTP();
       await user.save();
