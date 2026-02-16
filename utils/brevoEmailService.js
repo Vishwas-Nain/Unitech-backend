@@ -169,6 +169,115 @@ class BrevoEmailService {
       };
     }
   }
+
+  async sendNewsletter(newsletterData) {
+    if (!this.apiKey.apiKey) {
+      throw new Error('Brevo API key not configured');
+    }
+
+    try {
+      const { subscribers, subject, content } = newsletterData;
+      const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
+
+      const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+      sendSmtpEmail.sender = { 
+        email: process.env.EMAIL_SENDER || 'noreply@unitech.com', 
+        name: 'UniTech' 
+      };
+      sendSmtpEmail.subject = subject;
+      sendSmtpEmail.htmlContent = content;
+      
+      // Convert subscribers to Brevo format
+      sendSmtpEmail.to = subscribers.map(subscriber => ({
+        email: typeof subscriber === 'string' ? subscriber : subscriber.email
+      }));
+
+      const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
+      
+      console.log(`✅ Newsletter sent to ${subscribers.length} subscribers via Brevo`);
+      return {
+        success: true,
+        messageId: result.messageId,
+        recipients: subscribers.length,
+        message: 'Newsletter sent successfully via Brevo'
+      };
+
+    } catch (error) {
+      console.error('❌ Newsletter error:', error);
+      return {
+        success: false,
+        error: error.message,
+        message: 'Failed to send newsletter via Brevo'
+      };
+    }
+  }
+
+  async sendOrderConfirmation(order, user) {
+    if (!this.apiKey.apiKey) {
+      throw new Error('Brevo API key not configured');
+    }
+
+    try {
+      const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
+      
+      const htmlContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #28a745;">Order Confirmed! 🎉</h2>
+          <p>Hi ${user.name},</p>
+          <p>Thank you for your order! We've received your order and are preparing it for shipment.</p>
+          
+          <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3 style="color: #333; margin-top: 0;">Order Details</h3>
+            <p><strong>Order Number:</strong> ${order.orderNumber}</p>
+            <p><strong>Order Date:</strong> ${new Date(order.createdAt).toLocaleDateString()}</p>
+            <p><strong>Total Amount:</strong> ₹${order.total}</p>
+            <p><strong>Payment Status:</strong> ${order.paymentStatus}</p>
+          </div>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${process.env.CLIENT_URL}/orders/${order._id}" 
+               style="background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">
+              View Order Details
+            </a>
+          </div>
+          
+          <p style="color: #666;">We'll send you another email once your order ships. If you have any questions about your order, please contact our customer support.</p>
+          
+          <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+          <p style="color: #666; font-size: 14px;">
+            Best regards,<br>
+            The UniTech Team
+          </p>
+        </div>
+      `;
+
+      const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+      sendSmtpEmail.to = [{ email: user.email }];
+      sendSmtpEmail.sender = { 
+        email: process.env.EMAIL_SENDER || 'noreply@unitech.com', 
+        name: 'UniTech' 
+      };
+      sendSmtpEmail.subject = `Order Confirmation - ${order.orderNumber}`;
+      sendSmtpEmail.htmlContent = htmlContent;
+
+      const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
+      
+      console.log(`✅ Order confirmation sent to ${user.email} via Brevo`);
+      return {
+        success: true,
+        messageId: result.messageId,
+        message: 'Order confirmation sent successfully via Brevo'
+      };
+
+    } catch (error) {
+      console.error('❌ Order confirmation error:', error);
+      return {
+        success: false,
+        error: error.message,
+        message: 'Failed to send order confirmation via Brevo'
+      };
+    }
+  }
 }
 
 module.exports = new BrevoEmailService();

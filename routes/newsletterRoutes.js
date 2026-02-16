@@ -2,7 +2,7 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const Newsletter = require('../models/Newsletter');
 const { protect } = require('../middleware/auth');
-const emailService = require('../services/emailService');
+const brevoEmailService = require('../utils/brevoEmailService');
 
 const router = express.Router();
 
@@ -72,7 +72,7 @@ router.post('/subscribe',
         previewText: 'Welcome to Unitech Computers! Thank you for subscribing to our newsletter.'
       };
 
-      await emailService.sendNewsletter({
+      await brevoEmailService.sendNewsletter({
         subscribers: [subscriber],
         ...welcomeEmail
       });
@@ -199,7 +199,7 @@ router.post('/send',
       for (let i = 0; i < batches; i++) {
         const batch = subscribers.slice(i * batchSize, (i + 1) * batchSize);
         
-        await emailService.sendNewsletter({
+        await brevoEmailService.sendNewsletter({
           subscribers: batch,
           subject,
           content,

@@ -5,7 +5,7 @@ const Cart = require('../models/Cart');
 const Product = require('../models/Product');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
-const emailService = require('../services/emailService');
+const brevoEmailService = require('../utils/brevoEmailService');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 const router = express.Router();
@@ -216,7 +216,7 @@ router.post('/',
       await Cart.clearCart(req.user._id);
 
       // Send confirmation email
-      await emailService.sendOrderConfirmation(order, req.user);
+      await brevoEmailService.sendOrderConfirmation(order, req.user);
 
       res.status(201).json({
         message: 'Order placed successfully',
@@ -278,7 +278,7 @@ router.post('/:id/payment',
         await order.save();
 
         // Send confirmation email
-        await emailService.sendOrderConfirmation(order, req.user);
+        await brevoEmailService.sendOrderConfirmation(order, req.user);
 
         res.json({
           message: 'Payment successful',
