@@ -1,7 +1,6 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const Cart = require('../models/Cart');
-const Product = require('../models/Product');
+const CartPostgres = require('../models/CartPostgres');
 const { protect } = require('../middleware/auth');
 
 const router = express.Router();
@@ -23,7 +22,7 @@ const handleValidationErrors = (req, res, next) => {
 // @access  Private
 router.get('/', protect, async (req, res) => {
   try {
-    const cart = await Cart.getUserCart(req.user._id);
+    const cart = await CartPostgres.getUserCart(req.user.id);
 
     if (!cart) {
       return res.json({ cart: { items: [], totalItems: 0, totalPrice: 0 } });
@@ -43,7 +42,7 @@ router.post('/items',
   protect,
   [
     body('productId')
-      .isMongoId()
+      .isInt({ min: 1 })
       .withMessage('Invalid product ID'),
 
     body('quantity')
@@ -53,38 +52,22 @@ router.post('/items',
   handleValidationErrors,
   async (req, res) => {
     try {
-      const { productId, quantity = 1 } = req.body;
+      const { productId, quantity } = req.body;
 
-      // Check if product exists and is available
-      const product = await Product.findById(productId);
+      await CartPostgres.addToCart(req.user.id, parseInt(productId), parseInt(quantity));
 
-      if (!product) {
-        return res.status(404).json({ message: 'Product not found' });
-      }
-
-      if (!product.isActive) {
-        return res.status(400).json({ message: 'Product is not available' });
-      }
-
-      if (product.stock < quantity) {
-        return res.status(400).json({
-          message: `Only ${product.stock} items available in stock`
-        });
-      }
-
-      // Add item to cart
-      const cart = await Cart.addItem(req.user._id, productId, quantity);
-
-      // Update cart with current product prices
-      await updateCartPrices(cart);
-
+      const cart = await CartPostgres.getUserCart(req.user.id);
       res.json({
-        message: 'Item added to cart successfully',
+        success: true,
+        message: 'Item added to cart',
         cart
       });
     } catch (error) {
       console.error('Add to cart error:', error);
-      res.status(500).json({ message: 'Failed to add item to cart' });
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Failed to add item to cart'
+      });
     }
   }
 );
@@ -107,32 +90,16 @@ router.put('/items/:productId',
 
       if (quantity === 0) {
         // Remove item if quantity is 0
-        const cart = await Cart.removeItem(req.user._id, productId);
-        await updateCartPrices(cart);
+        await CartPostgres.removeFromCart(req.user.id, productId);
+        const cart = await CartPostgres.getUserCart(req.user.id);
         return res.json({
           message: 'Item removed from cart',
           cart
         });
       }
 
-      // Check if product exists and is available
-      const product = await Product.findById(productId);
-
-      if (!product) {
-        return res.status(404).json({ message: 'Product not found' });
-      }
-
-      if (product.stock < quantity) {
-        return res.status(400).json({
-          message: `Only ${product.stock} items available in stock`
-        });
-      }
-
-      // Update item quantity
-      const cart = await Cart.updateItemQuantity(req.user._id, productId, quantity);
-
-      // Update cart with current product prices
-      await updateCartPrices(cart);
+      await CartPostgres.updateCartItem(req.user.id, productId, quantity);
+      const cart = await CartPostgres.getUserCart(req.user.id);
 
       res.json({
         message: 'Cart updated successfully',
@@ -158,10 +125,8 @@ router.delete('/items/:productId', protect, async (req, res) => {
   try {
     const { productId } = req.params;
 
-    const cart = await Cart.removeItem(req.user._id, productId);
-
-    // Update cart with current product prices
-    await updateCartPrices(cart);
+    await CartPostgres.removeFromCart(req.user.id, productId);
+    const cart = await CartPostgres.getUserCart(req.user.id);
 
     res.json({
       message: 'Item removed from cart successfully',
@@ -169,9 +134,6 @@ router.delete('/items/:productId', protect, async (req, res) => {
     });
   } catch (error) {
     console.error('Remove from cart error:', error);
-    if (error.message === 'Cart not found') {
-      return res.status(404).json({ message: 'Cart not found' });
-    }
     res.status(500).json({ message: 'Failed to remove item from cart' });
   }
 });
@@ -181,14 +143,11 @@ router.delete('/items/:productId', protect, async (req, res) => {
 // @access  Private
 router.delete('/', protect, async (req, res) => {
   try {
-    await Cart.clearCart(req.user._id);
+    await CartPostgres.clearCart(req.user.id);
 
     res.json({ message: 'Cart cleared successfully' });
   } catch (error) {
     console.error('Clear cart error:', error);
-    if (error.message === 'Cart not found') {
-      return res.status(404).json({ message: 'Cart not found' });
-    }
     res.status(500).json({ message: 'Failed to clear cart' });
   }
 });
