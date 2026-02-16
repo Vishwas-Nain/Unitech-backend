@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
-const User = require('../models/User');
+const UserPostgres = require('../models/UserPostgres');
 const { protect } = require('../middleware/auth');
 const { sendOtpViaSms } = require('../utils/smsService');
 const { sendOtpViaEmail, sendWelcomeEmail } = require('../utils/emailService');
@@ -46,23 +46,23 @@ router.post('/register',
       const { name, email, password, mobile } = req.body;
 
       // Check if user exists
-      let user = await User.findOne({ $or: [{ email }, { mobile }] });
-      if (user) {
+      const existingUser = await UserPostgres.findByEmailOrMobile(email, mobile);
+      if (existingUser) {
         return res.status(400).json({ message: 'User with this email or mobile already exists' });
       }
 
       // Create user
-      user = new User({
+      const user = await UserPostgres.create({
         name,
         email,
         mobile,
         password,
-        isVerified: false // Explicitly set to false
+        isVerified: false
       });
 
       // Generate and save email OTP
-      const otp = user.createEmailOTP();
-      await user.save();
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      await UserPostgres.createEmailOTP(user.id, otp);
 
       // Send OTP via email
       const emailResult = await sendOtpViaEmail(email, otp, 'registration');
@@ -82,7 +82,7 @@ router.post('/register',
       res.status(201).json({
         success: true,
         message: 'Registration successful! Please verify your email with OTP sent to your email address.',
-        userId: user._id,
+        userId: user.id,
         email: user.email // Return email for verification
       });
     } catch (error) {
@@ -106,7 +106,7 @@ router.post('/login',
       const { email, password, otp } = req.body;
 
       // Check if user exists
-      const user = await User.findOne({ email }).select('+password');
+      const user = await UserPostgres.findByEmail(email);
       if (!user) {
         return res.status(400).json({ 
           success: false,
@@ -115,7 +115,7 @@ router.post('/login',
       }
 
       // Check password
-      const isMatch = await user.comparePassword(password);
+      const isMatch = await UserPostgres.comparePassword(password, user.password);
       if (!isMatch) {
         return res.status(400).json({ 
           success: false,
@@ -125,33 +125,35 @@ router.post('/login',
 
       // If OTP is provided, verify it
       if (otp) {
-        if (!user.isEmailOTPValid(otp)) {
-          await user.incrementOtpAttempts();
-          const remainingAttempts = 5 - user.otpAttempts;
-          
-          if (remainingAttempts > 0) {
-            return res.status(400).json({
-              success: false,
-              message: `Invalid OTP. ${remainingAttempts} attempts remaining.`
-            });
-          } else {
-            return res.status(429).json({
-              success: false,
-              message: 'Too many failed attempts. Please try again later.'
-            });
-          }
+        const verifiedUser = await UserPostgres.verifyEmailOTP(user.id, otp);
+        if (!verifiedUser) {
+          await UserPostgres.incrementOTPAttempts(user.id);
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid OTP or expired. Please try again.'
+          });
         }
+        
+        // Generate JWT token
+        const token = generateToken(verifiedUser.id);
 
-        // OTP is valid, mark user as verified
-        user.isVerified = true;
-        user.emailVerificationCode = undefined;
-        user.emailVerificationExpires = undefined;
-        user.otpAttempts = 0;
-        await user.save();
-      } else if (!user.isVerified) {
+        res.json({
+          success: true,
+          message: 'Login successful',
+          token,
+          user: {
+            id: verifiedUser.id,
+            name: verifiedUser.name,
+            email: verifiedUser.email,
+            mobile: verifiedUser.mobile,
+            role: verifiedUser.role,
+            isVerified: verifiedUser.is_verified
+          }
+        });
+      } else if (!user.is_verified) {
         // If no OTP provided and user is not verified, send new OTP
-        const newOtp = user.createEmailOTP();
-        await user.save();
+        const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+        await UserPostgres.createEmailOTP(user.id, newOtp);
         
         // Log OTP in development
         if (process.env.NODE_ENV !== 'production') {
@@ -174,26 +176,26 @@ router.post('/login',
           requiresOtp: true,
           message: 'Please enter the OTP sent to your email address',
           email: user.email,
-          userId: user._id.toString()
+          userId: user.id
+        });
+      } else {
+        // User is verified, login directly
+        const token = generateToken(user.id);
+
+        res.json({
+          success: true,
+          message: 'Login successful',
+          token,
+          user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            mobile: user.mobile,
+            role: user.role,
+            isVerified: user.is_verified
+          }
         });
       }
-
-      // Generate JWT token
-      const token = generateToken(user._id);
-
-      res.json({
-        success: true,
-        message: 'Login successful',
-        token,
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          mobile: user.mobile,
-          role: user.role,
-          isVerified: user.isVerified
-        }
-      });
     } catch (error) {
       console.error('Login error:', error);
       res.status(500).json({ message: 'Login failed. Please try again.' });
@@ -414,9 +416,9 @@ router.post('/verify-email-otp',
       // Find user by ID if provided, otherwise by email
       let user;
       if (userId) {
-        user = await User.findById(userId);
+        user = await UserPostgres.findById(userId);
       } else {
-        user = await User.findOne({ email });
+        user = await UserPostgres.findByEmail(email);
       }
 
       if (!user) {
@@ -427,51 +429,34 @@ router.post('/verify-email-otp',
       }
 
       // Check if OTP is valid
-      if (!user.isEmailOTPValid(otp)) {
-        // Increment attempts
-        await user.incrementOtpAttempts();
-
-        const remainingAttempts = 5 - user.otpAttempts;
-        if (remainingAttempts > 0) {
-          return res.status(400).json({
-            success: false,
-            message: `Invalid OTP. ${remainingAttempts} attempts remaining.`
-          });
-        } else {
-          return res.status(429).json({
-            success: false,
-            message: 'Too many failed attempts. Please request a new OTP.'
-          });
-        }
+      const verifiedUser = await UserPostgres.verifyEmailOTP(user.id, otp);
+      if (!verifiedUser) {
+        await UserPostgres.incrementOTPAttempts(user.id);
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid OTP or expired. Please try again.'
+        });
       }
 
-      // OTP is valid, mark as verified
-      user.isVerified = true;
-      user.emailVerificationCode = undefined;
-      user.emailVerificationExpires = undefined;
-      user.otpAttempts = 0;
-
-      await user.save();
-
       // Send welcome email if this is a new registration
-      if (!user.lastOtpSent || (Date.now() - user.lastOtpSent) < 10 * 60 * 1000) {
+      if (!user.last_otp_sent || (Date.now() - new Date(user.last_otp_sent).getTime()) < 10 * 60 * 1000) {
         await sendWelcomeEmail(user.email, user.name);
       }
 
       // Generate JWT token
-      const token = generateToken(user._id);
+      const token = generateToken(verifiedUser.id);
 
       res.json({
         success: true,
         message: 'Email verified successfully',
         token,
         user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          mobile: user.mobile,
-          role: user.role,
-          isVerified: user.isVerified
+          id: verifiedUser.id,
+          name: verifiedUser.name,
+          email: verifiedUser.email,
+          mobile: verifiedUser.mobile,
+          role: verifiedUser.role,
+          isVerified: verifiedUser.is_verified
         }
       });
     } catch (error) {
