@@ -20,8 +20,14 @@ app.use(limiter);
 
 // CORS configuration
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
-  credentials: true
+  origin: [
+    process.env.CLIENT_URL || 'http://localhost:3000',
+    'https://unitech-murex.vercel.app',
+    'https://unitech-murex.vercel.app/'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Cache-Control', 'Pragma']
 }));
 
 // Body parsing middleware
