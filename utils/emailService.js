@@ -10,15 +10,24 @@ const createTransporter = () => {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
     },
-    connectionTimeout: 5000, // 5 seconds
-    greetingTimeout: 3000, // 3 seconds
-    socketTimeout: 5000, // 5 seconds
+    connectionTimeout: 10000, // 10 seconds
+    greetingTimeout: 5000, // 5 seconds
+    socketTimeout: 10000, // 10 seconds
+    pool: true, // Use connection pooling
+    maxConnections: 1,
+    maxMessages: 5,
   });
 };
 
 // Send OTP via email
 const sendOtpViaEmail = async (email, otp, purpose = 'verification') => {
   try {
+    // Check if email credentials are configured
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      throw new Error('Email credentials not configured in environment variables');
+    }
+
+    console.log(`📧 Attempting to send email to ${email} using ${process.env.EMAIL_USER}`);
     const transporter = createTransporter();
 
     let subject, htmlContent;
