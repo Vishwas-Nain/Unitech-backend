@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const UserPostgres = require('../models/UserPostgres');
 
 // Generate JWT token
 const generateToken = (id) => {
@@ -33,7 +33,7 @@ const protect = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     // Get user from token
-    const currentUser = await User.findById(decoded.id);
+    const currentUser = await UserPostgres.findById(decoded.id);
 
     if (!currentUser) {
       return res.status(401).json({
@@ -42,7 +42,7 @@ const protect = async (req, res, next) => {
     }
 
     // Check if user is verified (optional - you can remove this if not needed)
-    if (!currentUser.isVerified) {
+    if (!currentUser.is_verified) {
       return res.status(401).json({
         message: 'Please verify your account first.'
       });
@@ -78,8 +78,8 @@ const resourceOwnerOrAdmin = (resourceUserIdField = 'user') => {
       return next();
     }
 
-    if (req.user._id.toString() !== req.params[resourceUserIdField]?.toString() &&
-        req.user._id.toString() !== req.body[resourceUserIdField]?.toString()) {
+    if (req.user.id !== req.params[resourceUserIdField]?.toString() &&
+        req.user.id !== req.body[resourceUserIdField]?.toString()) {
       return res.status(403).json({
         message: 'You can only access your own resources'
       });
@@ -105,7 +105,7 @@ const optionalAuth = async (req, res, next) => {
 
     if (token) {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const currentUser = await User.findById(decoded.id);
+      const currentUser = await UserPostgres.findById(decoded.id);
 
       if (currentUser) {
         req.user = currentUser;
