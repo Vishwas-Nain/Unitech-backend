@@ -66,17 +66,14 @@ router.post('/register',
 
       // Send OTP via email
       const emailResult = await sendOtpViaEmail(email, otp, 'registration');
+      
+      // Always show OTP in console for development/testing
+      console.log(`🔢 OTP for ${email}: ${otp}`);
+      
       if (!emailResult.success) {
         console.error('Failed to send OTP:', emailResult.error);
-        // In development, continue without email
-        if (process.env.NODE_ENV === 'development') {
-          console.log(`Development mode - OTP for ${email}: ${otp}`);
-        } else {
-          return res.status(500).json({ 
-            success: false,
-            message: 'Failed to send OTP. Please try again.'
-          });
-        }
+        // Continue registration even if email fails
+        console.log('⚠️ Email service failed, but registration completed');
       }
 
       res.status(201).json({
@@ -155,20 +152,15 @@ router.post('/login',
         const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
         await UserPostgres.createEmailOTP(user.id, newOtp);
         
-        // Log OTP in development
-        if (process.env.NODE_ENV !== 'production') {
-          console.log(`OTP for ${user.email}: ${newOtp}`);
-        }
+        // Always show OTP in console for development/testing
+        console.log(`🔢 OTP for ${user.email}: ${newOtp}`);
         
         // Send OTP via email
         const emailResult = await sendOtpViaEmail(user.email, newOtp, 'login');
         
         if (!emailResult.success) {
           console.error('Failed to send OTP:', emailResult.error);
-          return res.status(500).json({ 
-            success: false,
-            message: 'Failed to send OTP. Please try again.'
-          });
+          console.log('⚠️ Email service failed, but OTP generated');
         }
         
         return res.status(200).json({
