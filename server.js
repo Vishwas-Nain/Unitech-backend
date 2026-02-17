@@ -45,8 +45,20 @@ pool.query('SELECT NOW()', async (err, res) => {
     console.log('✅ Connected to Neon PostgreSQL');
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
     
-    // Initialize tables
-    await initializeTables();
+    // Initialize database tables
+    initializeTables();
+
+    // Temporary route to add sample products (remove in production)
+    app.post('/api/admin/add-sample-products', async (req, res) => {
+      try {
+        const { addSampleProducts } = require('./scripts/addSampleProducts');
+        await addSampleProducts();
+        res.json({ message: 'Sample products added successfully' });
+      } catch (error) {
+        console.error('Error adding sample products:', error);
+        res.status(500).json({ message: 'Failed to add sample products' });
+      }
+    });
   }
 });
 

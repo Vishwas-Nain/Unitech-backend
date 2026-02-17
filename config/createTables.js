@@ -41,6 +41,7 @@ const createProductsTable = async () => {
       description TEXT,
       price DECIMAL(10,2) NOT NULL,
       category VARCHAR(100),
+      subcategory VARCHAR(100),
       brand VARCHAR(100),
       stock INTEGER DEFAULT 0,
       images TEXT[],
@@ -56,6 +57,23 @@ const createProductsTable = async () => {
   } catch (error) {
     console.error('❌ Error creating products table:', error);
     throw error;
+  }
+};
+
+const addSubcategoryColumn = async () => {
+  const query = `
+    ALTER TABLE products 
+    ADD COLUMN IF NOT EXISTS subcategory VARCHAR(100)
+  `;
+
+  try {
+    await pool.query(query);
+    console.log('✅ Subcategory column added to products table');
+  } catch (error) {
+    // Column might already exist, which is fine
+    if (!error.message.includes('already exists')) {
+      console.error('❌ Error adding subcategory column:', error);
+    }
   }
 };
 
@@ -85,6 +103,7 @@ const initializeTables = async () => {
   try {
     await createUsersTable();
     await createProductsTable();
+    await addSubcategoryColumn(); // Add migration for existing tables
     await createCartsTable();
     console.log('🎉 All tables initialized successfully');
   } catch (error) {
