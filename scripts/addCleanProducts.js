@@ -1,5 +1,13 @@
 require('dotenv').config();
-const pool = require('../config/database');
+const { Pool } = require('pg');
+
+// Use production Neon database directly
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
+});
 
 const sampleProducts = [
   {

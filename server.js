@@ -48,6 +48,18 @@ pool.query('SELECT NOW()', async (err, res) => {
     // Use clean database structure
     const { createCleanTables } = require('./config/cleanDatabase');
     await createCleanTables();
+
+    // Temporary route to add sample products (remove in production)
+    app.post('/api/admin/add-clean-products', async (req, res) => {
+      try {
+        const { addCleanProducts } = require('./scripts/addCleanProducts');
+        await addCleanProducts();
+        res.json({ message: 'Clean sample products added successfully' });
+      } catch (error) {
+        console.error('Error adding clean products:', error);
+        res.status(500).json({ message: 'Failed to add clean sample products' });
+      }
+    });
   }
 });
 
