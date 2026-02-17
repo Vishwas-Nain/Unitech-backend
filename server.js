@@ -60,6 +60,18 @@ pool.query('SELECT NOW()', async (err, res) => {
         res.status(500).json({ message: 'Failed to add clean sample products' });
       }
     });
+
+    // Temporary route to add client products (remove in production)
+    app.post('/api/admin/add-client-products', async (req, res) => {
+      try {
+        const { addClientProducts } = require('./scripts/addClientProducts');
+        await addClientProducts();
+        res.json({ message: 'Client products added successfully' });
+      } catch (error) {
+        console.error('Error adding client products:', error);
+        res.status(500).json({ message: 'Failed to add client products' });
+      }
+    });
   }
 });
 
