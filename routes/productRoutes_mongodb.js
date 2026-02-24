@@ -34,8 +34,18 @@ router.get('/', optionalAuth, async (req, res) => {
       limit: parseInt(limit)
     });
 
+    // Add wishlist status if user is logged in
+    let productsWithWishlist = products;
+    if (req.user && req.user.wishlist) {
+      const userWishlist = req.user.wishlist.map(item => item.product.toString());
+      productsWithWishlist = products.map(product => ({
+        ...product,
+        isInWishlist: userWishlist.includes(product.id.toString())
+      }));
+    }
+
     res.json({
-      products,
+      products: productsWithWishlist,
       pagination: {
         currentPage: parseInt(page),
         totalPages: Math.ceil(products.length / parseInt(limit)),
@@ -65,10 +75,7 @@ router.get('/', optionalAuth, async (req, res) => {
 router.get('/featured', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
-    const products = await ProductPostgres.findAll({ 
-      featured: true, 
-      limit 
-    });
+    const products = await Product.getFeatured(limit);
 
     res.json({ products });
   } catch (error) {
@@ -82,7 +89,26 @@ router.get('/featured', async (req, res) => {
 // @access  Public
 router.get('/categories', async (req, res) => {
   try {
-    const categories = await ProductPostgres.getCategories();
+    const categories = await Product.aggregate([
+      { $match: { isActive: true } },
+      {
+        $group: {
+          _id: '$category',
+          count: { $sum: 1 },
+          avgPrice: { $avg: '$price' }
+        }
+      },
+      {
+        $project: {
+          category: '$_id',
+          count: 1,
+          avgPrice: { $round: ['$avgPrice', 0] },
+          _id: 0
+        }
+      },
+      { $sort: { category: 1 } }
+    ]);
+
     res.json({ categories });
   } catch (error) {
     console.error('Get categories error:', error);
@@ -95,7 +121,25 @@ router.get('/categories', async (req, res) => {
 // @access  Public
 router.get('/brands', async (req, res) => {
   try {
-    const brands = await ProductPostgres.getBrands();
+    const brands = await Product.aggregate([
+      { $match: { isActive: true } },
+      {
+        $group: {
+          _id: '$brand',
+          count: { $sum: 1 },
+          products: { $push: { name: '$name', price: '$price' } }
+        }
+      },
+      {
+        $project: {
+          brand: '$_id',
+          count: 1,
+          _id: 0
+        }
+      },
+      { $sort: { brand: 1 } }
+    ]);
+
     res.json({ brands });
   } catch (error) {
     console.error('Get brands error:', error);
@@ -114,7 +158,7 @@ router.get('/search', async (req, res) => {
       return res.status(400).json({ message: 'Search query is required' });
     }
 
-    const products = await ProductPostgres.search(query, parseInt(limit));
+    const products = await Product.search(query, parseInt(limit));
 
     res.json({ products, query });
   } catch (error) {
@@ -138,7 +182,20 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ message: 'Product not available' });
     }
 
-    res.json({ product });
+    // Check if product is in user's wishlist
+    let isInWishlist = false;
+    if (req.user && req.user.wishlist) {
+      isInWishlist = req.user.wishlist.some(item =>
+        item.product.toString() === product.id.toString()
+      );
+    }
+
+    res.json({
+      product: {
+        ...product,
+        isInWishlist
+      }
+    });
   } catch (error) {
     console.error('Get product error:', error);
     res.status(500).json({ message: 'Failed to fetch product' });
@@ -160,6 +217,52 @@ router.post('/', protect, authorize('admin'), async (req, res) => {
   } catch (error) {
     console.error('Create product error:', error);
     res.status(500).json({ message: 'Failed to create product' });
+  }
+});
+
+// @route   PUT /api/products/:id
+// @desc    Update product (Admin only)
+// @access  Private/Admin
+router.put('/:id', protect, authorize('admin'), async (req, res) => {
+  try {
+    const product = await Product.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, runValidators: true }
+    );
+
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    res.json({
+      message: 'Product updated successfully',
+      product
+    });
+  } catch (error) {
+    console.error('Update product error:', error);
+    if (error.code === 11000) {
+      return res.status(400).json({ message: 'Product SKU already exists' });
+    }
+    res.status(500).json({ message: 'Failed to update product' });
+  }
+});
+
+// @route   DELETE /api/products/:id
+// @desc    Delete product (Admin only)
+// @access  Private/Admin
+router.delete('/:id', protect, authorize('admin'), async (req, res) => {
+  try {
+    const product = await Product.findByIdAndDelete(req.params.id);
+
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    res.json({ message: 'Product deleted successfully' });
+  } catch (error) {
+    console.error('Delete product error:', error);
+    res.status(500).json({ message: 'Failed to delete product' });
   }
 });
 

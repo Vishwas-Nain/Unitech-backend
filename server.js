@@ -15,7 +15,8 @@ app.use(helmet());
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.'
+  message: 'Too many requests from this IP, please try again later.',
+  trustProxy: true // Fix for X-Forwarded-For header issue
 });
 app.use(limiter);
 
@@ -45,9 +46,8 @@ pool.query('SELECT NOW()', async (err, res) => {
     console.log('✅ Connected to Neon PostgreSQL');
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
     
-    // Use clean database structure
-    const { createCleanTables } = require('./config/cleanDatabase');
-    await createCleanTables();
+    // Initialize tables (keep existing data)
+    await initializeTables();
 
     // Temporary route to add sample products (remove in production)
     app.post('/api/admin/add-clean-products', async (req, res) => {
@@ -61,15 +61,15 @@ pool.query('SELECT NOW()', async (err, res) => {
       }
     });
 
-    // Temporary route to add client products (remove in production)
-    app.post('/api/admin/add-client-products', async (req, res) => {
+    // Production route to add all client products
+    app.post('/api/admin/add-all-products', async (req, res) => {
       try {
-        const { addClientProducts } = require('./scripts/addClientProducts');
-        await addClientProducts();
-        res.json({ message: 'Client products added successfully' });
+        const { addAllClientProducts } = require('./scripts/addAllClientProducts');
+        await addAllClientProducts();
+        res.json({ message: 'All client products added successfully' });
       } catch (error) {
-        console.error('Error adding client products:', error);
-        res.status(500).json({ message: 'Failed to add client products' });
+        console.error('Error adding all client products:', error);
+        res.status(500).json({ message: 'Failed to add all client products' });
       }
     });
   }

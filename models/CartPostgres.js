@@ -30,7 +30,8 @@ class CartPostgres {
       
       // Calculate totals
       const items = result.rows.map(row => ({
-        id: row.product_id,
+        id: row.id, // Use cart item ID, not product ID
+        product_id: row.product_id, // Keep product ID separate
         name: row.product_name,
         price: parseFloat(row.price),
         quantity: row.quantity,

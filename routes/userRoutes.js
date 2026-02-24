@@ -558,9 +558,9 @@ router.post('/verify-otp',
       // Find user by ID if provided, otherwise by mobile
       let user;
       if (userId) {
-        user = await User.findById(userId);
+        user = await UserPostgres.findById(userId);
       } else {
-        user = await User.findOne({ mobile });
+        user = await UserPostgres.findByMobile(mobile);
       }
 
       if (!user) {
@@ -757,5 +757,31 @@ router.put('/profile', protect,
     }
   }
 );
+
+// @route   GET /api/users/verify-token
+// @desc    Verify if token is valid
+// @access  Private
+router.get('/verify-token', protect, async (req, res) => {
+  try {
+    // If we reach here, the token is valid (protect middleware passed)
+    const user = await UserPostgres.findById(req.user.id);
+    
+    if (!user) {
+      return res.status(401).json({ valid: false, message: 'User not found' });
+    }
+    
+    res.json({ 
+      valid: true, 
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name
+      }
+    });
+  } catch (error) {
+    console.error('Token verification error:', error);
+    res.status(500).json({ valid: false, message: 'Token verification failed' });
+  }
+});
 
 module.exports = router;
