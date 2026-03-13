@@ -106,7 +106,7 @@ router.post('/login',
   handleValidationErrors,
   async (req, res) => {
     try {
-      const { email, password, otp } = req.body;
+      const { email, password, otp, resendOtp } = req.body;
 
       // Check if user exists
       const user = await UserPostgres.findByEmail(email);
@@ -123,6 +123,57 @@ router.post('/login',
         return res.status(400).json({ 
           success: false,
           message: 'Invalid credentials' 
+        });
+      }
+
+      // Handle resend OTP request
+      if (resendOtp) {
+        // Check if OTP was sent recently (rate limiting)
+        const cooldownPeriod = 2 * 60 * 1000; // 2 minutes
+        if (user.last_otp_sent && (Date.now() - new Date(user.last_otp_sent).getTime()) < cooldownPeriod) {
+          const remainingTime = Math.ceil((cooldownPeriod - (Date.now() - new Date(user.last_otp_sent).getTime())) / 1000);
+          return res.status(429).json({
+            success: false,
+            message: `Please wait ${remainingTime} seconds before requesting another OTP`
+          });
+        }
+
+        // Check OTP attempts
+        if (user.otp_attempts >= 5) {
+          return res.status(429).json({
+            success: false,
+            message: 'Too many OTP attempts. Please try again later.'
+          });
+        }
+
+        // Generate and send new OTP
+        const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+        await UserPostgres.createEmailOTP(user.id, newOtp);
+        
+        // Show OTP in console for development/testing
+        console.log(`🔢 Resend OTP for ${user.email}: ${newOtp}`);
+        
+        // Send OTP via email with Brevo
+        try {
+          const emailResult = await brevoEmailService.sendOTP(user.email, newOtp, 'login');
+          
+          if (!emailResult.success) {
+            console.error('⚠️ Brevo email service failed:', emailResult.error);
+            console.log('📧 OTP generated, but email delivery failed');
+          } else {
+            console.log('✅ Resend email sent successfully via Brevo');
+          }
+        } catch (emailError) {
+          console.error('⚠️ Email service error:', emailError.message);
+          console.log('📧 OTP generated, but email delivery failed');
+        }
+        
+        return res.status(200).json({
+          success: true,
+          requiresOtp: true,
+          message: 'New OTP sent to your email address',
+          email: user.email,
+          userId: user.id
         });
       }
 
