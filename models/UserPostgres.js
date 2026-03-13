@@ -129,6 +129,99 @@ class UserPostgres {
   static async comparePassword(plainPassword, hashedPassword) {
     return await bcrypt.compare(plainPassword, hashedPassword);
   }
+
+  // Admin management methods
+  static async findAllUsers(skip = 0, limit = 10) {
+    const query = `
+      SELECT id, name, email, mobile, is_verified, role, created_at, updated_at
+      FROM users
+      ORDER BY created_at DESC
+      LIMIT $1 OFFSET $2
+    `;
+    
+    try {
+      console.log('Executing query:', query, 'with params:', [limit, skip]);
+      const result = await pool.query(query, [limit, skip]);
+      console.log('Query result:', result.rows.length, 'rows found');
+      console.log('Sample row:', result.rows[0]);
+      return result.rows;
+    } catch (error) {
+      console.error('Database error in findAllUsers:', error);
+      throw error;
+    }
+  }
+
+  static async countUsers() {
+    const query = `
+      SELECT COUNT(*) as total
+      FROM users
+    `;
+    
+    try {
+      console.log('Executing count query:', query);
+      const result = await pool.query(query);
+      const total = parseInt(result.rows[0].total);
+      console.log('Total users count:', total);
+      return total;
+    } catch (error) {
+      console.error('Database error in countUsers:', error);
+      throw error;
+    }
+  }
+
+  static async createUser(userData) {
+    const { name, email, mobile, password, role = 'user', is_verified = true } = userData;
+    
+    // Hash password
+    const salt = await bcrypt.genSalt(12);
+    const hashedPassword = await bcrypt.hash(password, salt);
+    
+    const query = `
+      INSERT INTO users (name, email, mobile, password, role, is_verified, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+      RETURNING id, name, email, mobile, role, is_verified, created_at
+    `;
+    
+    try {
+      const result = await pool.query(query, [name, email, mobile, hashedPassword, role, is_verified]);
+      return result.rows[0];
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  static async updateUser(id, userData) {
+    const { name, email, mobile, role, is_verified } = userData;
+    
+    const query = `
+      UPDATE users
+      SET name = $1, email = $2, mobile = $3, role = $4, is_verified = $5, updated_at = NOW()
+      WHERE id = $6
+      RETURNING id, name, email, mobile, role, is_verified, created_at, updated_at
+    `;
+    
+    try {
+      const result = await pool.query(query, [name, email, mobile, role, is_verified, id]);
+      return result.rows[0];
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  static async deleteUser(id) {
+    const query = `
+      DELETE FROM users
+      WHERE id = $1
+      RETURNING id
+    `;
+    
+    try {
+      const result = await pool.query(query, [id]);
+      return result.rows[0];
+    } catch (error) {
+      throw error;
+    }
+  }
 }
 
 module.exports = UserPostgres;

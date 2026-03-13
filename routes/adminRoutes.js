@@ -149,10 +149,15 @@ router.get('/users', protect, authorize('admin'), async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
+    console.log('Fetching users with skip:', skip, 'limit:', limit);
+
     // Use PostgreSQL UserPostgres model instead of MongoDB User
     const UserPostgres = require('../models/UserPostgres');
     const users = await UserPostgres.findAllUsers(skip, limit);
     const total = await UserPostgres.countUsers();
+
+    console.log('Found users:', users.length, 'Total count:', total);
+    console.log('Sample user data:', users[0]);
 
     res.json({
       success: true,
@@ -168,7 +173,8 @@ router.get('/users', protect, authorize('admin'), async (req, res) => {
     console.error('Get users error:', error);
     res.status(500).json({ 
       success: false,
-      message: 'Failed to fetch users' 
+      message: 'Failed to fetch users',
+      error: error.message 
     });
   }
 });
