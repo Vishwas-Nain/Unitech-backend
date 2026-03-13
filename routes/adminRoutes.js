@@ -436,14 +436,15 @@ router.get('/products', protect, authorize('admin'), async (req, res) => {
 router.post('/products', protect, authorize('admin'), async (req, res) => {
   try {
     const ProductPostgres = require('../models/ProductPostgres');
-    const { name, price, category, stock, description } = req.body;
+    const { name, price, category, brand, stock, description } = req.body;
 
-    console.log('Creating product:', { name, price, category, stock, description });
+    console.log('Creating product:', { name, price, category, brand, stock, description });
 
     const product = await ProductPostgres.create({
       name,
       price,
       category,
+      brand,
       stock: stock || 0,
       description
     });
@@ -469,12 +470,13 @@ router.post('/products', protect, authorize('admin'), async (req, res) => {
 router.put('/products/:id', protect, authorize('admin'), async (req, res) => {
   try {
     const ProductPostgres = require('../models/ProductPostgres');
-    const { name, price, category, stock, description } = req.body;
+    const { name, price, category, brand, stock, description } = req.body;
 
     const product = await ProductPostgres.update(req.params.id, {
       name,
       price,
       category,
+      brand,
       stock,
       description
     });
