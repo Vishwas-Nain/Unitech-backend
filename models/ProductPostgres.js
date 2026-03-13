@@ -223,6 +223,111 @@ class ProductPostgres {
       throw error;
     }
   }
+
+  static async create(productData) {
+    const { name, description, price, category, subcategory, stock, images } = productData;
+    
+    const query = `
+      INSERT INTO products (name, description, price, category, subcategory, stock, images, is_active, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+      RETURNING id, name, description, price, category, subcategory, stock, images, created_at, updated_at
+    `;
+    
+    try {
+      const result = await pool.query(query, [
+        name, 
+        description, 
+        price, 
+        category, 
+        subcategory || null, 
+        stock || 0, 
+        images ? JSON.stringify(images) : '[]', 
+        true
+      ]);
+      
+      const product = result.rows[0];
+      
+      // Parse JSON fields if needed
+      if (product.images && typeof product.images === 'string') {
+        product.images = JSON.parse(product.images);
+      }
+      
+      return product;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  static async update(id, productData) {
+    const { name, description, price, category, subcategory, stock, images } = productData;
+    
+    const query = `
+      UPDATE products 
+      SET name = $1, description = $2, price = $3, category = $4, subcategory = $5, stock = $6, images = $7, updated_at = NOW()
+      WHERE id = $8 AND is_active = true
+      RETURNING id, name, description, price, category, subcategory, stock, images, created_at, updated_at
+    `;
+    
+    try {
+      const result = await pool.query(query, [
+        name, 
+        description, 
+        price, 
+        category, 
+        subcategory || null, 
+        stock, 
+        images ? JSON.stringify(images) : '[]', 
+        id
+      ]);
+      
+      const product = result.rows[0];
+      
+      // Parse JSON fields if needed
+      if (product.images && typeof product.images === 'string') {
+        product.images = JSON.parse(product.images);
+      }
+      
+      return product;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  static async deleteProduct(id) {
+    const query = `
+      UPDATE products 
+      SET is_active = false, updated_at = NOW()
+      WHERE id = $1
+      RETURNING id
+    `;
+    
+    try {
+      const result = await pool.query(query, [id]);
+      
+      if (result.rows.length === 0) {
+        throw new Error('Product not found');
+      }
+      
+      return result.rows[0];
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  static async countProducts() {
+    const query = `
+      SELECT COUNT(*) as total
+      FROM products 
+      WHERE is_active = true
+    `;
+    
+    try {
+      const result = await pool.query(query);
+      return parseInt(result.rows[0].total);
+    } catch (error) {
+      throw error;
+    }
+  }
 }
 
 module.exports = ProductPostgres;

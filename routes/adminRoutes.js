@@ -400,17 +400,16 @@ router.get('/orders', protect, authorize('admin'), async (req, res) => {
 // @access  Private (Admin only)
 router.get('/products', protect, authorize('admin'), async (req, res) => {
   try {
-    const Product = require('../models/Product');
+    const ProductPostgres = require('../models/ProductPostgres');
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    const products = await Product.find()
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    const total = await Product.countDocuments();
+    const products = await ProductPostgres.findAll({
+      limit,
+      offset: skip
+    });
+    const total = await ProductPostgres.countProducts();
 
     res.json({
       success: true,
@@ -436,19 +435,18 @@ router.get('/products', protect, authorize('admin'), async (req, res) => {
 // @access  Private (Admin only)
 router.post('/products', protect, authorize('admin'), async (req, res) => {
   try {
-    const Product = require('../models/Product');
-    const { name, price, category, stock, description, images } = req.body;
+    const ProductPostgres = require('../models/ProductPostgres');
+    const { name, price, category, stock, description } = req.body;
 
-    const product = new Product({
+    console.log('Creating product:', { name, price, category, stock, description });
+
+    const product = await ProductPostgres.create({
       name,
       price,
       category,
       stock: stock || 0,
-      description,
-      images: images || []
+      description
     });
-
-    await product.save();
 
     res.status(201).json({
       success: true,
@@ -459,7 +457,8 @@ router.post('/products', protect, authorize('admin'), async (req, res) => {
     console.error('Create product error:', error);
     res.status(500).json({ 
       success: false,
-      message: 'Failed to create product' 
+      message: 'Failed to create product',
+      error: error.message 
     });
   }
 });
@@ -469,14 +468,16 @@ router.post('/products', protect, authorize('admin'), async (req, res) => {
 // @access  Private (Admin only)
 router.put('/products/:id', protect, authorize('admin'), async (req, res) => {
   try {
-    const Product = require('../models/Product');
-    const { name, price, category, stock, description, images } = req.body;
+    const ProductPostgres = require('../models/ProductPostgres');
+    const { name, price, category, stock, description } = req.body;
 
-    const product = await Product.findByIdAndUpdate(
-      req.params.id,
-      { name, price, category, stock, description, images },
-      { new: true, runValidators: true }
-    );
+    const product = await ProductPostgres.update(req.params.id, {
+      name,
+      price,
+      category,
+      stock,
+      description
+    });
 
     if (!product) {
       return res.status(404).json({
@@ -494,7 +495,8 @@ router.put('/products/:id', protect, authorize('admin'), async (req, res) => {
     console.error('Update product error:', error);
     res.status(500).json({ 
       success: false,
-      message: 'Failed to update product' 
+      message: 'Failed to update product',
+      error: error.message 
     });
   }
 });
@@ -504,8 +506,9 @@ router.put('/products/:id', protect, authorize('admin'), async (req, res) => {
 // @access  Private (Admin only)
 router.delete('/products/:id', protect, authorize('admin'), async (req, res) => {
   try {
-    const Product = require('../models/Product');
-    const product = await Product.findByIdAndDelete(req.params.id);
+    const ProductPostgres = require('../models/ProductPostgres');
+
+    const product = await ProductPostgres.deleteProduct(req.params.id);
 
     if (!product) {
       return res.status(404).json({
@@ -522,7 +525,8 @@ router.delete('/products/:id', protect, authorize('admin'), async (req, res) => 
     console.error('Delete product error:', error);
     res.status(500).json({ 
       success: false,
-      message: 'Failed to delete product' 
+      message: 'Failed to delete product',
+      error: error.message 
     });
   }
 });
