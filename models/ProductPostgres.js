@@ -234,6 +234,9 @@ class ProductPostgres {
     `;
     
     try {
+      const imagesArray = images && Array.isArray(images) ? images : [];
+      const imagesJson = JSON.stringify(imagesArray);
+      
       const result = await pool.query(query, [
         name, 
         description, 
@@ -241,7 +244,7 @@ class ProductPostgres {
         category, 
         subcategory || null, 
         stock || 0, 
-        images ? JSON.stringify(images) : '[]', 
+        imagesJson, 
         true
       ]);
       
@@ -269,6 +272,9 @@ class ProductPostgres {
     `;
     
     try {
+      const imagesArray = images && Array.isArray(images) ? images : [];
+      const imagesJson = JSON.stringify(imagesArray);
+      
       const result = await pool.query(query, [
         name, 
         description, 
@@ -276,7 +282,7 @@ class ProductPostgres {
         category, 
         subcategory || null, 
         stock, 
-        images ? JSON.stringify(images) : '[]', 
+        imagesJson, 
         id
       ]);
       
