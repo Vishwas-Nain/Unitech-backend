@@ -105,12 +105,18 @@ router.post('/create',
 router.get('/dashboard', protect, authorize('admin'), async (req, res) => {
   try {
     const totalUsers = await User.countDocuments({ role: 'user' });
-    const totalOrders = await require('../models/Order').countDocuments();
-    const totalProducts = await require('../models/Product').countDocuments();
+    const Order = require('../models/Order');
+    const Product = require('../models/Product');
+    
+    const totalOrders = await Order.countDocuments();
+    const totalProducts = await Product.countDocuments();
+    
+    // Calculate total revenue
+    const orders = await Order.find({ status: { $in: ['delivered', 'shipped', 'processing'] } });
+    const totalRevenue = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
     
     // Get recent orders
-    const recentOrders = await require('../models/Order')
-      .find()
+    const recentOrders = await Order.find()
       .populate('user', 'name email')
       .sort({ createdAt: -1 })
       .limit(5);
@@ -120,7 +126,8 @@ router.get('/dashboard', protect, authorize('admin'), async (req, res) => {
       stats: {
         totalUsers,
         totalOrders,
-        totalProducts
+        totalProducts,
+        totalRevenue
       },
       recentOrders
     });
@@ -165,6 +172,210 @@ router.get('/users', protect, authorize('admin'), async (req, res) => {
     res.status(500).json({ 
       success: false,
       message: 'Failed to fetch users' 
+    });
+  }
+});
+
+// @route   GET /api/admin/orders
+// @desc    Get all orders
+// @access  Private (Admin only)
+router.get('/orders', protect, authorize('admin'), async (req, res) => {
+  try {
+    const Order = require('../models/Order');
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const orders = await Order.find()
+      .populate('user', 'name email')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const total = await Order.countDocuments();
+
+    res.json({
+      success: true,
+      orders,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error('Get orders error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch orders' 
+    });
+  }
+});
+
+// @route   GET /api/admin/products
+// @desc    Get all products
+// @access  Private (Admin only)
+router.get('/products', protect, authorize('admin'), async (req, res) => {
+  try {
+    const Product = require('../models/Product');
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const products = await Product.find()
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const total = await Product.countDocuments();
+
+    res.json({
+      success: true,
+      products,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error('Get products error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch products' 
+    });
+  }
+});
+
+// @route   POST /api/admin/products
+// @desc    Create a new product
+// @access  Private (Admin only)
+router.post('/products', protect, authorize('admin'), async (req, res) => {
+  try {
+    const Product = require('../models/Product');
+    const { name, price, category, stock, description, images } = req.body;
+
+    const product = new Product({
+      name,
+      price,
+      category,
+      stock: stock || 0,
+      description,
+      images: images || []
+    });
+
+    await product.save();
+
+    res.status(201).json({
+      success: true,
+      message: 'Product created successfully',
+      product
+    });
+  } catch (error) {
+    console.error('Create product error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to create product' 
+    });
+  }
+});
+
+// @route   PUT /api/admin/products/:id
+// @desc    Update a product
+// @access  Private (Admin only)
+router.put('/products/:id', protect, authorize('admin'), async (req, res) => {
+  try {
+    const Product = require('../models/Product');
+    const { name, price, category, stock, description, images } = req.body;
+
+    const product = await Product.findByIdAndUpdate(
+      req.params.id,
+      { name, price, category, stock, description, images },
+      { new: true, runValidators: true }
+    );
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Product updated successfully',
+      product
+    });
+  } catch (error) {
+    console.error('Update product error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to update product' 
+    });
+  }
+});
+
+// @route   DELETE /api/admin/products/:id
+// @desc    Delete a product
+// @access  Private (Admin only)
+router.delete('/products/:id', protect, authorize('admin'), async (req, res) => {
+  try {
+    const Product = require('../models/Product');
+    const product = await Product.findByIdAndDelete(req.params.id);
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Product deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete product error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to delete product' 
+    });
+  }
+});
+
+// @route   PUT /api/admin/orders/:id
+// @desc    Update order status
+// @access  Private (Admin only)
+router.put('/orders/:id', protect, authorize('admin'), async (req, res) => {
+  try {
+    const Order = require('../models/Order');
+    const { status } = req.body;
+
+    const order = await Order.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true, runValidators: true }
+    ).populate('user', 'name email');
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Order status updated successfully',
+      order
+    });
+  } catch (error) {
+    console.error('Update order status error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to update order status' 
     });
   }
 });
