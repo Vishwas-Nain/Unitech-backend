@@ -101,12 +101,13 @@ router.post('/login',
   [
     body('email', 'Please include a valid email').isEmail(),
     body('password', 'Password is required').exists(),
-    body('otp', 'OTP is required for verification').optional().isLength({ min: 6, max: 6 })
+    body('otp', 'OTP is required for verification').optional().isLength({ min: 6, max: 6 }),
+    body('sendOtp', 'Send OTP flag must be boolean').optional().isBoolean()
   ],
   handleValidationErrors,
   async (req, res) => {
     try {
-      const { email, password, otp, resendOtp } = req.body;
+      const { email, password, otp, sendOtp } = req.body;
 
       // Check if user exists
       const user = await UserPostgres.findByEmail(email);
@@ -126,8 +127,59 @@ router.post('/login',
         });
       }
 
+      // Handle Send OTP request
+      if (sendOtp) {
+        // Check if OTP was sent recently (rate limiting)
+        const cooldownPeriod = 2 * 60 * 1000; // 2 minutes
+        if (user.last_otp_sent && (Date.now() - new Date(user.last_otp_sent).getTime()) < cooldownPeriod) {
+          const remainingTime = Math.ceil((cooldownPeriod - (Date.now() - new Date(user.last_otp_sent).getTime())) / 1000);
+          return res.status(429).json({
+            success: false,
+            message: `Please wait ${remainingTime} seconds before requesting another OTP`
+          });
+        }
+
+        // Check OTP attempts
+        if (user.otp_attempts >= 5) {
+          return res.status(429).json({
+            success: false,
+            message: 'Too many OTP attempts. Please try again later.'
+          });
+        }
+
+        // Generate and send OTP
+        const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+        await UserPostgres.createEmailOTP(user.id, newOtp);
+        
+        // Show OTP in console for development/testing
+        console.log(`🔢 OTP for ${user.email}: ${newOtp}`);
+        
+        // Send OTP via email with Brevo
+        try {
+          const emailResult = await brevoEmailService.sendOTP(user.email, newOtp, 'login');
+          
+          if (!emailResult.success) {
+            console.error('⚠️ Brevo email service failed:', emailResult.error);
+            console.log('📧 OTP generated, but email delivery failed');
+          } else {
+            console.log('✅ OTP email sent successfully via Brevo');
+          }
+        } catch (emailError) {
+          console.error('⚠️ Email service error:', emailError.message);
+          console.log('📧 OTP generated, but email delivery failed');
+        }
+        
+        return res.status(200).json({
+          success: true,
+          requiresOtp: true,
+          message: 'OTP has been sent to your email address',
+          email: user.email,
+          userId: user.id
+        });
+      }
+
       // Handle resend OTP request
-      if (resendOtp) {
+      if (req.body.resendOtp) {
         // Check if OTP was sent recently (rate limiting)
         const cooldownPeriod = 2 * 60 * 1000; // 2 minutes
         if (user.last_otp_sent && (Date.now() - new Date(user.last_otp_sent).getTime()) < cooldownPeriod) {
@@ -204,52 +256,14 @@ router.post('/login',
             isVerified: verifiedUser.is_verified
           }
         });
-      } else if (!user.is_verified) {
-        // If no OTP provided and user is not verified, send new OTP
-        const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
-        await UserPostgres.createEmailOTP(user.id, newOtp);
-        
-        // Show OTP in console for development/testing
-        console.log(`🔢 OTP for ${user.email}: ${newOtp}`);
-        
-        // Send OTP via email with Brevo
-        try {
-          const emailResult = await brevoEmailService.sendOTP(user.email, newOtp, 'login');
-          
-          if (!emailResult.success) {
-            console.error('⚠️ Brevo email service failed:', emailResult.error);
-            console.log('📧 OTP generated, but email delivery failed');
-          } else {
-            console.log('✅ Email sent successfully via Brevo');
-          }
-        } catch (emailError) {
-          console.error('⚠️ Email service error:', emailError.message);
-          console.log('📧 OTP generated, but email delivery failed');
-        }
-        
+      } else {
+        // If no OTP provided, ask user to provide OTP
         return res.status(200).json({
           success: true,
           requiresOtp: true,
-          message: 'Please enter the OTP sent to your email address',
+          message: 'Please request OTP to complete login',
           email: user.email,
           userId: user.id
-        });
-      } else {
-        // User is verified, login directly
-        const token = generateToken(user.id, user.role);
-
-        res.json({
-          success: true,
-          message: 'Login successful',
-          token,
-          user: {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            mobile: user.mobile,
-            role: user.role,
-            isVerified: user.is_verified
-          }
         });
       }
     } catch (error) {
