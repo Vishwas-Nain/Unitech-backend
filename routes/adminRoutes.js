@@ -149,13 +149,10 @@ router.get('/users', protect, authorize('admin'), async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    const users = await User.find({ role: 'user' })
-      .select('-password')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    const total = await User.countDocuments({ role: 'user' });
+    // Use PostgreSQL UserPostgres model instead of MongoDB User
+    const UserPostgres = require('../models/UserPostgres');
+    const users = await UserPostgres.findAllUsers(skip, limit);
+    const total = await UserPostgres.countUsers();
 
     res.json({
       success: true,
@@ -172,6 +169,185 @@ router.get('/users', protect, authorize('admin'), async (req, res) => {
     res.status(500).json({ 
       success: false,
       message: 'Failed to fetch users' 
+    });
+  }
+});
+
+// @route   POST /api/admin/users
+// @desc    Create a new user
+// @access  Private (Admin only)
+router.post('/users', protect, authorize('admin'), async (req, res) => {
+  try {
+    const { name, email, mobile, password, role } = req.body;
+    const UserPostgres = require('../models/UserPostgres');
+    const bcrypt = require('bcryptjs');
+
+    // Check if user already exists
+    const existingUser = await UserPostgres.findByEmail(email);
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'User with this email already exists'
+      });
+    }
+
+    // Hash password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Create user
+    const newUser = await UserPostgres.createUser({
+      name,
+      email,
+      mobile,
+      password: hashedPassword,
+      role: role || 'user',
+      is_verified: true
+    });
+
+    // Remove password from response
+    const { password: _, ...userWithoutPassword } = newUser;
+
+    res.status(201).json({
+      success: true,
+      message: 'User created successfully',
+      user: userWithoutPassword
+    });
+  } catch (error) {
+    console.error('Create user error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create user'
+    });
+  }
+});
+
+// @route   PUT /api/admin/users/:id
+// @desc    Update user (including role change)
+// @access  Private (Admin only)
+router.put('/users/:id', protect, authorize('admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, email, mobile, role, is_verified } = req.body;
+    const UserPostgres = require('../models/UserPostgres');
+
+    // Check if user exists
+    const existingUser = await UserPostgres.findById(id);
+    if (!existingUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // If email is being changed, check if it's already taken
+    if (email !== existingUser.email) {
+      const emailExists = await UserPostgres.findByEmail(email);
+      if (emailExists) {
+        return res.status(400).json({
+          success: false,
+          message: 'Email already exists'
+        });
+      }
+    }
+
+    // Update user
+    const updatedUser = await UserPostgres.updateUser(id, {
+      name,
+      email,
+      mobile,
+      role,
+      is_verified
+    });
+
+    res.json({
+      success: true,
+      message: 'User updated successfully',
+      user: updatedUser
+    });
+  } catch (error) {
+    console.error('Update user error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update user'
+    });
+  }
+});
+
+// @route   DELETE /api/admin/users/:id
+// @desc    Delete user
+// @access  Private (Admin only)
+router.delete('/users/:id', protect, authorize('admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const UserPostgres = require('../models/UserPostgres');
+
+    // Check if user exists
+    const existingUser = await UserPostgres.findById(id);
+    if (!existingUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Don't allow deleting admin users
+    if (existingUser.role === 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Cannot delete admin users'
+      });
+    }
+
+    // Delete user
+    await UserPostgres.deleteUser(id);
+
+    res.json({
+      success: true,
+      message: 'User deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete user'
+    });
+  }
+});
+
+// @route   PUT /api/admin/users/:id/toggle-status
+// @desc    Block/unblock user
+// @access  Private (Admin only)
+router.put('/users/:id/toggle-status', protect, authorize('admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const UserPostgres = require('../models/UserPostgres');
+
+    // Check if user exists
+    const existingUser = await UserPostgres.findById(id);
+    if (!existingUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Toggle verification status (using as active/inactive flag)
+    const newStatus = !existingUser.is_verified;
+    const updatedUser = await UserPostgres.updateUser(id, {
+      is_verified: newStatus
+    });
+
+    res.json({
+      success: true,
+      message: `User ${newStatus ? 'activated' : 'deactivated'} successfully`,
+      user: updatedUser
+    });
+  } catch (error) {
+    console.error('Toggle user status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to toggle user status'
     });
   }
 });
