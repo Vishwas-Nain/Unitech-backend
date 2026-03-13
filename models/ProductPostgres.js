@@ -28,9 +28,9 @@ class ProductPostgres {
       
       const product = result.rows[0];
       
-      // Parse JSON fields if needed
-      if (product.images && typeof product.images === 'string') {
-        product.images = JSON.parse(product.images);
+      // Handle images array (PostgreSQL returns array directly)
+      if (!product.images) {
+        product.images = [];
       }
       
       return product;
@@ -112,9 +112,9 @@ class ProductPostgres {
       const result = await pool.query(query, params);
       
       const products = result.rows.map(product => {
-        // Parse JSON fields if needed
-        if (product.images && typeof product.images === 'string') {
-          product.images = JSON.parse(product.images);
+        // Handle images array (PostgreSQL returns array directly)
+        if (!product.images) {
+          product.images = [];
         }
         return product;
       });
@@ -212,8 +212,9 @@ class ProductPostgres {
       const result = await pool.query(query, [limit]);
       
       const products = result.rows.map(product => {
-        if (product.images && typeof product.images === 'string') {
-          product.images = JSON.parse(product.images);
+        // Handle images array (PostgreSQL returns array directly)
+        if (!product.images) {
+          product.images = [];
         }
         return product;
       });
@@ -227,6 +228,8 @@ class ProductPostgres {
   static async create(productData) {
     const { name, description, price, category, subcategory, stock, images } = productData;
     
+    console.log('ProductPostgres.create called with:', productData);
+    
     const query = `
       INSERT INTO products (name, description, price, category, subcategory, stock, images, is_active, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
@@ -235,7 +238,17 @@ class ProductPostgres {
     
     try {
       const imagesArray = images && Array.isArray(images) ? images : [];
-      const imagesJson = JSON.stringify(imagesArray);
+      
+      console.log('Executing query with params:', {
+        name, 
+        description, 
+        price, 
+        category, 
+        subcategory: subcategory || null, 
+        stock: stock || 0, 
+        imagesArray, 
+        is_active: true
+      });
       
       const result = await pool.query(query, [
         name, 
@@ -244,19 +257,22 @@ class ProductPostgres {
         category, 
         subcategory || null, 
         stock || 0, 
-        imagesJson, 
+        imagesArray, 
         true
       ]);
       
       const product = result.rows[0];
       
-      // Parse JSON fields if needed
-      if (product.images && typeof product.images === 'string') {
-        product.images = JSON.parse(product.images);
-      }
-      
+      console.log('Product created successfully:', product);
       return product;
     } catch (error) {
+      console.error('ProductPostgres.create error:', error);
+      console.error('Error details:', {
+        message: error.message,
+        code: error.code,
+        detail: error.detail,
+        hint: error.hint
+      });
       throw error;
     }
   }
@@ -273,7 +289,6 @@ class ProductPostgres {
     
     try {
       const imagesArray = images && Array.isArray(images) ? images : [];
-      const imagesJson = JSON.stringify(imagesArray);
       
       const result = await pool.query(query, [
         name, 
@@ -282,19 +297,22 @@ class ProductPostgres {
         category, 
         subcategory || null, 
         stock, 
-        imagesJson, 
+        imagesArray, 
         id
       ]);
       
       const product = result.rows[0];
       
-      // Parse JSON fields if needed
-      if (product.images && typeof product.images === 'string') {
-        product.images = JSON.parse(product.images);
-      }
-      
+      console.log('Product updated successfully:', product);
       return product;
     } catch (error) {
+      console.error('ProductPostgres.update error:', error);
+      console.error('Error details:', {
+        message: error.message,
+        code: error.code,
+        detail: error.detail,
+        hint: error.hint
+      });
       throw error;
     }
   }
