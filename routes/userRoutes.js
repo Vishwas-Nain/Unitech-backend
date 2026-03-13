@@ -8,8 +8,8 @@ const { sendOtpViaSms } = require('../utils/smsService');
 const brevoEmailService = require('../utils/brevoEmailService');
 
 // Generate JWT Token
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
+const generateToken = (id, role) => {
+  return jwt.sign({ id, role }, process.env.JWT_SECRET, {
     expiresIn: '30d', // Token expires in 30 days
   });
 };
@@ -138,7 +138,7 @@ router.post('/login',
         }
         
         // Generate JWT token
-        const token = generateToken(verifiedUser.id);
+        const token = generateToken(verifiedUser.id, verifiedUser.role);
 
         res.json({
           success: true,
@@ -185,7 +185,7 @@ router.post('/login',
         });
       } else {
         // User is verified, login directly
-        const token = generateToken(user.id);
+        const token = generateToken(user.id, user.role);
 
         res.json({
           success: true,
@@ -449,7 +449,7 @@ router.post('/verify-email-otp',
       }
 
       // Generate JWT token
-      const token = generateToken(verifiedUser.id);
+      const token = generateToken(verifiedUser.id, verifiedUser.role);
 
       res.json({
         success: true,
@@ -598,7 +598,7 @@ router.post('/verify-otp',
       await user.save();
 
       // Generate JWT token
-      const token = generateToken(user._id);
+      const token = generateToken(user._id, user.role);
 
       res.json({
         success: true,

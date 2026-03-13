@@ -2,8 +2,8 @@ const jwt = require('jsonwebtoken');
 const UserPostgres = require('../models/UserPostgres');
 
 // Generate JWT token
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
+const generateToken = (id, role) => {
+  return jwt.sign({ id, role }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRE || '7d',
   });
 };
@@ -48,8 +48,12 @@ const protect = async (req, res, next) => {
       });
     }
 
-    // Grant access to protected route
-    req.user = currentUser;
+    // Attach user with role to request
+    req.user = {
+      ...currentUser,
+      role: decoded.role || currentUser.role // Use role from token first, fallback to DB
+    };
+    
     next();
   } catch (error) {
     console.error('Auth middleware error:', error);
