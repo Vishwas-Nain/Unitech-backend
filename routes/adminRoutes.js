@@ -400,7 +400,7 @@ router.get('/products', protect, authorize('admin'), async (req, res) => {
   try {
     const ProductPostgres = require('../models/ProductPostgres');
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    const limit = parseInt(req.query.limit) || 1000; 
     const skip = (page - 1) * limit;
 
     const products = await ProductPostgres.findAll({
@@ -408,6 +408,8 @@ router.get('/products', protect, authorize('admin'), async (req, res) => {
       offset: skip
     });
     const total = await ProductPostgres.countProducts();
+
+    console.log(`Admin products request: page=${page}, limit=${limit}, returned=${products.length}, total=${total}`);
 
     res.json({
       success: true,
@@ -423,7 +425,8 @@ router.get('/products', protect, authorize('admin'), async (req, res) => {
     console.error('Get products error:', error);
     res.status(500).json({ 
       success: false,
-      message: 'Failed to fetch products' 
+      message: 'Failed to fetch products',
+      error: error.message 
     });
   }
 });
