@@ -357,22 +357,22 @@ router.put('/users/:id/toggle-status', protect, authorize('admin'), async (req, 
 });
 
 // @route   GET /api/admin/orders
-// @desc    Get all orders
+// @desc    Get all orders (admin only)
 // @access  Private (Admin only)
 router.get('/orders', protect, authorize('admin'), async (req, res) => {
   try {
-    const Order = require('../models/Order');
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
+    const { page = 1, limit = 10 } = req.query;
 
-    const orders = await Order.find()
-      .populate('user', 'name email')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
+    const OrderPostgres = require('../models/OrderPostgres');
+    const orders = await OrderPostgres.getAllOrders(
+      parseInt(limit),
+      (parseInt(page) - 1) * parseInt(limit)
+    );
 
-    const total = await Order.countDocuments();
+    const totalOrders = await OrderPostgres.countOrders();
+    const totalPages = Math.ceil(totalOrders / parseInt(limit));
+
+    console.log('Admin orders request: page=', page, 'limit=', limit, 'returned=', orders.length, 'total=', totalOrders);
 
     res.json({
       success: true,
@@ -380,15 +380,16 @@ router.get('/orders', protect, authorize('admin'), async (req, res) => {
       pagination: {
         page,
         limit,
-        total,
-        pages: Math.ceil(total / limit)
+        total: totalOrders,
+        pages: totalPages
       }
     });
   } catch (error) {
-    console.error('Get orders error:', error);
+    console.error('Admin orders error:', error);
     res.status(500).json({ 
       success: false,
-      message: 'Failed to fetch orders' 
+      message: 'Failed to fetch orders',
+      error: error.message 
     });
   }
 });

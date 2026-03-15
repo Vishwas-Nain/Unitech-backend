@@ -357,6 +357,27 @@ class ProductPostgres {
       throw error;
     }
   }
+
+  static async updateStock(productId, quantityChange) {
+    const query = `
+      UPDATE products 
+      SET stock = stock + $1, updated_at = NOW()
+      WHERE id = $2 AND is_active = true
+      RETURNING id, stock, updated_at
+    `;
+    
+    try {
+      const result = await pool.query(query, [quantityChange, productId]);
+      
+      if (result.rows.length === 0) {
+        throw new Error('Product not found');
+      }
+      
+      return result.rows[0];
+    } catch (error) {
+      throw error;
+    }
+  }
 }
 
 module.exports = ProductPostgres;

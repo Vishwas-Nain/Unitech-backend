@@ -1,9 +1,9 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const Order = require('../models/Order');
-const Cart = require('../models/Cart');
-const Product = require('../models/Product');
-const User = require('../models/User');
+const OrderPostgres = require('../models/OrderPostgres');
+const CartPostgres = require('../models/CartPostgres');
+const ProductPostgres = require('../models/ProductPostgres');
+const UserPostgres = require('../models/UserPostgres');
 const { protect } = require('../middleware/auth');
 const brevoEmailService = require('../utils/brevoEmailService');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
@@ -15,6 +15,7 @@ const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({
+      success: false,
       message: 'Validation failed',
       errors: errors.array().map(err => ({ field: err.param, message: err.msg }))
     });
@@ -29,16 +30,17 @@ router.get('/', protect, async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;
 
-    const orders = await Order.getUserOrders(
-      req.user._id,
+    const orders = await OrderPostgres.getUserOrders(
+      req.user.id,
       parseInt(limit),
       (parseInt(page) - 1) * parseInt(limit)
     );
 
-    const totalOrders = await Order.countDocuments({ user: req.user._id });
+    const totalOrders = await OrderPostgres.countOrders(req.user.id);
     const totalPages = Math.ceil(totalOrders / parseInt(limit));
 
     res.json({
+      success: true,
       orders,
       pagination: {
         currentPage: parseInt(page),
@@ -49,8 +51,11 @@ router.get('/', protect, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get orders error:', error);
-    res.status(500).json({ message: 'Failed to fetch orders' });
+    console.error('Get user orders error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch user orders' 
+    });
   }
 });
 
@@ -59,26 +64,33 @@ router.get('/', protect, async (req, res) => {
 // @access  Private
 router.get('/:id', protect, async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id)
-      .populate('items.product')
-      .populate('user', 'name email');
-
+    const order = await OrderPostgres.getOrderById(req.params.id);
+    
     if (!order) {
-      return res.status(404).json({ message: 'Order not found' });
+      return res.status(404).json({ 
+        success: false,
+        message: 'Order not found' 
+      });
     }
 
-    // Check if user owns the order or is admin
-    if (order.user._id.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Not authorized to view this order' });
+    // Check if user owns this order or is admin
+    if (order.user_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ 
+        success: false,
+        message: 'Access denied' 
+      });
     }
 
-    res.json({ order });
+    res.json({
+      success: true,
+      order
+    });
   } catch (error) {
     console.error('Get order error:', error);
-    if (error.name === 'CastError') {
-      return res.status(400).json({ message: 'Invalid order ID' });
-    }
-    res.status(500).json({ message: 'Failed to fetch order' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch order' 
+    });
   }
 });
 
@@ -132,242 +144,150 @@ router.post('/',
       } = req.body;
 
       // Get user's cart
-      const cart = await Cart.findOne({ user: req.user._id }).populate('items.product');
+      const cart = await CartPostgres.getUserCart(req.user.id);
 
       if (!cart || cart.items.length === 0) {
-        return res.status(400).json({ message: 'Cart is empty' });
+        return res.status(400).json({ 
+          success: false,
+          message: 'Cart is empty' 
+        });
       }
 
       // Check product availability and stock
       for (const item of cart.items) {
-        if (!item.product.isActive) {
+        const product = await ProductPostgres.findById(item.product_id);
+        if (!product) {
           return res.status(400).json({
-            message: `${item.product.name} is no longer available`
+            success: false,
+            message: `${item.name} is no longer available`
           });
         }
 
-        if (item.product.stock < item.quantity) {
+        if (product.stock < item.quantity) {
           return res.status(400).json({
-            message: `${item.product.name} only has ${item.product.stock} items in stock`
+            success: false,
+            message: `${item.name} only has ${product.stock} items in stock`
           });
         }
       }
 
       // Calculate totals
-      const subtotal = cart.subtotal;
-      const discount = cart.discountAmount;
+      const subtotal = cart.totalPrice;
+      const discount = 0; // TODO: Implement coupon logic
       const tax = subtotal * 0.18; // 18% GST
       const shipping = subtotal > 1000 ? 0 : 100; // Free shipping over ₹1000
       const total = subtotal - discount + tax + shipping;
 
       // Create order items
       const orderItems = cart.items.map(item => ({
-        product: item.product._id,
+        product_id: item.product_id,
         quantity: item.quantity,
-        price: item.product.price,
-        name: item.product.name,
-        image: item.product.images[0]?.url || ''
+        price: item.price
       }));
 
       // Create order
-      const order = new Order({
-        user: req.user._id,
+      const order = await OrderPostgres.create(req.user.id, {
         items: orderItems,
         shippingAddress,
         billingAddress: billingAddress || shippingAddress,
         paymentMethod,
-        subtotal,
-        tax,
-        shipping,
-        discount,
-        total,
-        coupon: cart.coupon,
-        notes
+        totalAmount: total
       });
-
-      // Handle payment based on payment method
-      if (paymentMethod === 'card') {
-        // Create Stripe payment intent
-        const paymentIntent = await stripe.paymentIntents.create({
-          amount: Math.round(total * 100), // Convert to paise
-          currency: 'inr',
-          metadata: {
-            orderId: order._id.toString(),
-            userId: req.user._id.toString()
-          }
-        });
-
-        order.stripePaymentIntentId = paymentIntent.id;
-        order.paymentStatus = 'pending';
-      } else {
-        order.paymentStatus = paymentMethod === 'cod' ? 'pending' : 'completed';
-      }
-
-      await order.save();
 
       // Update product stock
       for (const item of orderItems) {
-        await Product.findByIdAndUpdate(item.product, {
-          $inc: { stock: -item.quantity }
-        });
+        await ProductPostgres.updateStock(item.product_id, -item.quantity);
       }
 
-      // Clear cart
-      await Cart.clearCart(req.user._id);
+      // Clear user's cart
+      await CartPostgres.clearCart(req.user.id);
 
-      // Send confirmation email
-      await brevoEmailService.sendOrderConfirmation(order, req.user);
+      // Send order confirmation email
+      try {
+        const user = await UserPostgres.findById(req.user.id);
+        await brevoEmailService.sendOrderConfirmation(user.email, order);
+      } catch (emailError) {
+        console.error('Failed to send order confirmation email:', emailError);
+      }
 
       res.status(201).json({
+        success: true,
         message: 'Order placed successfully',
-        order: {
-          id: order._id,
-          orderNumber: order.orderNumber,
-          total,
-          paymentStatus: order.paymentStatus,
-          orderStatus: order.orderStatus,
-          paymentMethod,
-          requiresPayment: paymentMethod === 'card'
-        },
-        ...(paymentMethod === 'card' && {
-          clientSecret: order.stripePaymentIntentId
-        })
+        order
       });
     } catch (error) {
       console.error('Create order error:', error);
-      res.status(500).json({ message: 'Failed to place order' });
+      res.status(500).json({ 
+        success: false,
+        message: 'Failed to place order' 
+      });
     }
   }
 );
 
-// @route   POST /api/orders/:id/payment
-// @desc    Process payment for order
-// @access  Private
-router.post('/:id/payment',
-  protect,
-  [
-    body('paymentIntentId')
-      .notEmpty()
-      .withMessage('Payment intent ID is required')
-  ],
-  handleValidationErrors,
-  async (req, res) => {
-    try {
-      const { paymentIntentId } = req.body;
-
-      const order = await Order.findById(req.params.id);
-
-      if (!order) {
-        return res.status(404).json({ message: 'Order not found' });
-      }
-
-      if (order.user.toString() !== req.user._id.toString()) {
-        return res.status(403).json({ message: 'Not authorized' });
-      }
-
-      if (order.paymentStatus === 'completed') {
-        return res.status(400).json({ message: 'Order already paid' });
-      }
-
-      // Retrieve payment intent from Stripe
-      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-
-      if (paymentIntent.status === 'succeeded') {
-        order.paymentStatus = 'completed';
-        order.paymentId = paymentIntentId;
-        await order.save();
-
-        // Send confirmation email
-        await brevoEmailService.sendOrderConfirmation(order, req.user);
-
-        res.json({
-          message: 'Payment successful',
-          order: {
-            id: order._id,
-            orderNumber: order.orderNumber,
-            paymentStatus: order.paymentStatus
-          }
-        });
-      } else {
-        res.status(400).json({ message: 'Payment failed' });
-      }
-    } catch (error) {
-      console.error('Payment processing error:', error);
-      res.status(500).json({ message: 'Payment processing failed' });
-    }
-  }
-);
-
-// @route   PUT /api/orders/:id/cancel
-// @desc    Cancel order
-// @access  Private
-router.put('/:id/cancel', protect, async (req, res) => {
+// @route   PUT /api/orders/:id/status
+// @desc    Update order status (admin only)
+// @access  Private (Admin only)
+router.put('/:id/status', protect, async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id);
-
-    if (!order) {
-      return res.status(404).json({ message: 'Order not found' });
-    }
-
-    if (order.user.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Not authorized' });
-    }
-
-    if (order.orderStatus === 'delivered') {
-      return res.status(400).json({ message: 'Cannot cancel delivered order' });
-    }
-
-    if (order.orderStatus === 'cancelled') {
-      return res.status(400).json({ message: 'Order already cancelled' });
-    }
-
-    // Update order status
-    order.orderStatus = 'cancelled';
-    await order.save();
-
-    // Restore product stock
-    for (const item of order.items) {
-      await Product.findByIdAndUpdate(item.product, {
-        $inc: { stock: item.quantity }
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ 
+        success: false,
+        message: 'Access denied' 
       });
     }
 
+    const { status } = req.body;
+    
+    if (!['pending', 'processing', 'shipped', 'delivered', 'cancelled'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid order status'
+      });
+    }
+
+    const updatedOrder = await OrderPostgres.updateOrderStatus(req.params.id, status);
+    
     res.json({
-      message: 'Order cancelled successfully',
-      order
+      success: true,
+      message: 'Order status updated successfully',
+      order: updatedOrder
     });
   } catch (error) {
-    console.error('Cancel order error:', error);
-    res.status(500).json({ message: 'Failed to cancel order' });
+    console.error('Update order status error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to update order status' 
+    });
   }
 });
 
-// @route   GET /api/orders/admin/all
-// @desc    Get all orders (Admin only)
-// @access  Private/Admin
-router.get('/admin/all', protect, async (req, res) => {
+// @route   GET /api/orders/all
+// @desc    Get all orders (admin only)
+// @access  Private (Admin only)
+router.get('/all', protect, async (req, res) => {
   try {
+    // Check if user is admin
     if (req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Admin access required' });
+      return res.status(403).json({ 
+        success: false,
+        message: 'Access denied' 
+      });
     }
 
-    const { status, page = 1, limit = 20 } = req.query;
+    const { page = 1, limit = 10 } = req.query;
 
-    let query = {};
-    if (status) {
-      query.orderStatus = status;
-    }
+    const orders = await OrderPostgres.getAllOrders(
+      parseInt(limit),
+      (parseInt(page) - 1) * parseInt(limit)
+    );
 
-    const orders = await Order.find(query)
-      .populate('user', 'name email mobile')
-      .sort({ createdAt: -1 })
-      .limit(parseInt(limit))
-      .skip((parseInt(page) - 1) * parseInt(limit));
-
-    const totalOrders = await Order.countDocuments(query);
+    const totalOrders = await OrderPostgres.countOrders();
     const totalPages = Math.ceil(totalOrders / parseInt(limit));
 
     res.json({
+      success: true,
       orders,
       pagination: {
         currentPage: parseInt(page),
@@ -379,51 +299,10 @@ router.get('/admin/all', protect, async (req, res) => {
     });
   } catch (error) {
     console.error('Get all orders error:', error);
-    res.status(500).json({ message: 'Failed to fetch orders' });
-  }
-});
-
-// @route   PUT /api/orders/:id/status
-// @desc    Update order status (Admin only)
-// @access  Private/Admin
-router.put('/:id/status', protect, async (req, res) => {
-  try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Admin access required' });
-    }
-
-    const { status, trackingNumber } = req.body;
-
-    const validStatuses = [
-      'pending', 'confirmed', 'processing', 'shipped',
-      'out_for_delivery', 'delivered', 'cancelled', 'returned', 'refunded'
-    ];
-
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({ message: 'Invalid order status' });
-    }
-
-    const order = await Order.findByIdAndUpdate(
-      req.params.id,
-      {
-        orderStatus: status,
-        ...(trackingNumber && { trackingNumber }),
-        ...(status === 'delivered' && { deliveredAt: new Date() })
-      },
-      { new: true }
-    );
-
-    if (!order) {
-      return res.status(404).json({ message: 'Order not found' });
-    }
-
-    res.json({
-      message: 'Order status updated successfully',
-      order
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch all orders' 
     });
-  } catch (error) {
-    console.error('Update order status error:', error);
-    res.status(500).json({ message: 'Failed to update order status' });
   }
 });
 
