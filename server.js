@@ -21,15 +21,26 @@ const limiter = rateLimit({
 app.use(limiter);
 
 // CORS configuration
+const allowedOrigins = [
+  process.env.CLIENT_URL || 'http://localhost:3000',
+  'https://unitech-murex.vercel.app',
+  'https://unitech-murex.vercel.app/',
+  'https://unitech-25am5o8zy-vishwas-nains-projects-4cf21a16.vercel.app',
+  'https://unitech-25am5o8zy-vishwas-nains-projects-4cf21a16.vercel.app/'
+];
+
+// In development, allow all origins
+if (process.env.NODE_ENV === 'development') {
+  allowedOrigins.push('*');
+}
+
 app.use(cors({
-  origin: [
-    process.env.CLIENT_URL || 'http://localhost:3000',
-    'https://unitech-murex.vercel.app',
-    'https://unitech-murex.vercel.app/'
-  ],
+  origin: allowedOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Cache-Control', 'Pragma']
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Cache-Control', 'Pragma'],
+  preflightContinue: false,
+  optionsSuccessStatus: 200
 }));
 
 // Body parsing middleware
