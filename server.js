@@ -8,6 +8,9 @@ require('dotenv').config();
 
 const app = express();
 
+// Trust proxy settings for Render deployment
+app.set('trust proxy', true);
+
 // Security middleware
 app.use(helmet());
 
@@ -26,7 +29,9 @@ const allowedOrigins = [
   'https://unitech-murex.vercel.app',
   'https://unitech-murex.vercel.app/',
   'https://unitech-25am5o8zy-vishwas-nains-projects-4cf21a16.vercel.app',
-  'https://unitech-25am5o8zy-vishwas-nains-projects-4cf21a16.vercel.app/'
+  'https://unitech-25am5o8zy-vishwas-nains-projects-4cf21a16.vercel.app/',
+  'https://unitech-okiy04vb5-vishwas-nains-projects-4cf21a16.vercel.app',
+  'https://unitech-okiy04vb5-vishwas-nains-projects-4cf21a16.vercel.app/'
 ];
 
 // In development, allow all origins
