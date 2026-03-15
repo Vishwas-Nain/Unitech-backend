@@ -33,7 +33,9 @@ const allowedOrigins = [
   'https://unitech-okiy04vb5-vishwas-nains-projects-4cf21a16.vercel.app',
   'https://unitech-okiy04vb5-vishwas-nains-projects-4cf21a16.vercel.app/',
   'https://unitech-lfekpujpo-vishwas-nains-projects-4cf21a16.vercel.app',
-  'https://unitech-lfekpujpo-vishwas-nains-projects-4cf21a16.vercel.app/'
+  'https://unitech-lfekpujpo-vishwas-nains-projects-4cf21a16.vercel.app/',
+  'https://unitech-n9py0rxcl-vishwas-nains-projects-4cf21a16.vercel.app',
+  'https://unitech-n9py0rxcl-vishwas-nains-projects-4cf21a16.vercel.app/'
 ];
 
 // In development, allow all origins
@@ -41,8 +43,32 @@ if (process.env.NODE_ENV === 'development') {
   allowedOrigins.push('*');
 }
 
+// Dynamic CORS middleware to handle Vercel deployments
 app.use(cors({
-  origin: allowedOrigins,
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Check if origin is in allowed list
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      return callback(null, true);
+    }
+    
+    // Allow all Vercel domains (pattern matching for future deployments)
+    if (origin.includes('vercel.app') && origin.includes('vishwas-nains-projects')) {
+      console.log('Allowing Vercel origin:', origin);
+      return callback(null, true);
+    }
+    
+    // In production, be more restrictive
+    if (process.env.NODE_ENV === 'production') {
+      console.log('CORS blocked origin:', origin);
+      return callback(new Error('Not allowed by CORS'));
+    }
+    
+    // In development, allow all
+    return callback(null, true);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Cache-Control', 'Pragma'],
