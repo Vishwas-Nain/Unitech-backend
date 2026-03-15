@@ -104,22 +104,19 @@ router.post('/create',
 // @access  Private (Admin only)
 router.get('/dashboard', protect, authorize('admin'), async (req, res) => {
   try {
-    const totalUsers = await User.countDocuments({ role: 'user' });
-    const Order = require('../models/Order');
-    const Product = require('../models/Product');
+    const UserPostgres = require('../models/UserPostgres');
+    const ProductPostgres = require('../models/ProductPostgres');
     
-    const totalOrders = await Order.countDocuments();
-    const totalProducts = await Product.countDocuments();
+    const totalUsers = await UserPostgres.countUsers();
+    const totalProducts = await ProductPostgres.countProducts();
     
-    // Calculate total revenue
-    const orders = await Order.find({ status: { $in: ['delivered', 'shipped', 'processing'] } });
-    const totalRevenue = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
-    
-    // Get recent orders
-    const recentOrders = await Order.find()
-      .populate('user', 'name email')
-      .sort({ createdAt: -1 })
-      .limit(5);
+    // For now, return basic stats with orders as 0
+    // TODO: Implement PostgreSQL model for Order
+    const totalOrders = 0;
+    const totalRevenue = 0;
+    const recentOrders = [];
+
+    console.log('Dashboard stats:', { totalUsers, totalProducts, totalOrders, totalRevenue });
 
     res.json({
       success: true,
@@ -135,7 +132,8 @@ router.get('/dashboard', protect, authorize('admin'), async (req, res) => {
     console.error('Dashboard error:', error);
     res.status(500).json({ 
       success: false,
-      message: 'Failed to fetch dashboard data' 
+      message: 'Failed to fetch dashboard data',
+      error: error.message 
     });
   }
 });
