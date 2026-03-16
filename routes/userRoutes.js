@@ -149,7 +149,19 @@ router.post('/login',
 
         // Generate and send OTP
         const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+        console.log(`🔢 Generating OTP for user ${user.id}: ${newOtp}`);
+        
         await UserPostgres.createEmailOTP(user.id, newOtp);
+        
+        // Verify OTP was stored
+        const userAfterOtp = await UserPostgres.findById(user.id);
+        console.log(`📋 OTP stored successfully:`, {
+          userId: userAfterOtp.id,
+          hasEmailVerificationCode: !!userAfterOtp.email_verification_code,
+          emailVerificationExpires: userAfterOtp.email_verification_expires,
+          otpAttempts: userAfterOtp.otp_attempts,
+          lastOtpSent: userAfterOtp.last_otp_sent
+        });
         
         // Show OTP in console for development/testing
         console.log(`🔢 OTP for ${user.email}: ${newOtp}`);
@@ -231,14 +243,29 @@ router.post('/login',
 
       // If OTP is provided, verify it
       if (otp) {
+        console.log(`🔍 Verifying OTP for user ${user.id}: ${otp}`);
+        
+        // First check if user has OTP data
+        const userWithOtp = await UserPostgres.findById(user.id);
+        console.log(`📋 User OTP data:`, {
+          userId: userWithOtp.id,
+          hasEmailVerificationCode: !!userWithOtp.email_verification_code,
+          emailVerificationExpires: userWithOtp.email_verification_expires,
+          otpAttempts: userWithOtp.otp_attempts,
+          lastOtpSent: userWithOtp.last_otp_sent
+        });
+        
         const verifiedUser = await UserPostgres.verifyEmailOTP(user.id, otp);
         if (!verifiedUser) {
+          console.log(`❌ OTP verification failed for user ${user.id}`);
           await UserPostgres.incrementOTPAttempts(user.id);
           return res.status(400).json({
             success: false,
             message: 'Invalid OTP or expired. Please try again.'
           });
         }
+        
+        console.log(`✅ OTP verified successfully for user ${user.id}`);
         
         // Generate JWT token
         const token = generateToken(verifiedUser.id, verifiedUser.role);
