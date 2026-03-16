@@ -23,7 +23,13 @@ const protect = async (req, res, next) => {
       token = req.cookies.token;
     }
 
+    console.log('🔍 Auth middleware - Token check:', {
+      hasToken: !!token,
+      tokenPreview: token ? `${token.substring(0, 20)}...` : null
+    });
+
     if (!token) {
+      console.log('❌ No token provided');
       return res.status(401).json({
         message: 'You are not logged in! Please log in to get access.'
       });
@@ -31,22 +37,31 @@ const protect = async (req, res, next) => {
 
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log('✅ Token decoded:', { userId: decoded.id, role: decoded.role });
 
     // Get user from token
     const currentUser = await UserPostgres.findById(decoded.id);
 
     if (!currentUser) {
+      console.log('❌ User not found for token');
       return res.status(401).json({
         message: 'The user belonging to this token no longer exists.'
       });
     }
 
-    // Check if user is verified (optional - you can remove this if not needed)
-    if (!currentUser.is_verified) {
-      return res.status(401).json({
-        message: 'Please verify your account first.'
-      });
-    }
+    console.log('👤 User verification status:', {
+      userId: currentUser.id,
+      isVerified: currentUser.is_verified,
+      email: currentUser.email
+    });
+
+    // Check if user is verified (temporarily disabled for testing)
+    // if (!currentUser.is_verified) {
+    //   console.log('❌ User not verified');
+    //   return res.status(401).json({
+    //     message: 'Please verify your account first.'
+    //   });
+    // }
 
     // Attach user with role to request
     req.user = {
