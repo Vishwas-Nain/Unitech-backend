@@ -135,6 +135,11 @@ router.post('/',
   handleValidationErrors,
   async (req, res) => {
     try {
+      console.log('🛒 Create order request:', {
+        user: req.user ? { id: req.user.id, email: req.user.email } : null,
+        body: req.body
+      });
+
       const {
         shippingAddress,
         billingAddress,
@@ -145,8 +150,16 @@ router.post('/',
 
       // Get user's cart
       const cart = await CartPostgres.getUserCart(req.user.id);
+      console.log('🛒 User cart:', {
+        userId: req.user.id,
+        hasCart: !!cart,
+        itemsCount: cart ? cart.items.length : 0,
+        totalItems: cart ? cart.totalItems : 0,
+        totalPrice: cart ? cart.totalPrice : 0
+      });
 
       if (!cart || cart.items.length === 0) {
+        console.log('❌ Cart is empty');
         return res.status(400).json({ 
           success: false,
           message: 'Cart is empty' 

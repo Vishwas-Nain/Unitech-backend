@@ -53,11 +53,22 @@ router.post('/items',
   handleValidationErrors,
   async (req, res) => {
     try {
+      console.log('🛒 Add to cart request:', {
+        user: req.user ? { id: req.user.id, email: req.user.email } : null,
+        body: req.body
+      });
+      
       const { productId, quantity } = req.body;
 
       await CartPostgres.addToCart(req.user.id, parseInt(productId), parseInt(quantity));
 
       const cart = await CartPostgres.getUserCart(req.user.id);
+      console.log('✅ Cart after adding:', {
+        userId: req.user.id,
+        totalItems: cart.totalItems,
+        itemsCount: cart.items.length
+      });
+      
       res.json({
         success: true,
         message: 'Item added to cart',
