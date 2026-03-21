@@ -25,7 +25,9 @@ const protect = async (req, res, next) => {
 
     console.log('🔍 Auth middleware - Token check:', {
       hasToken: !!token,
-      tokenPreview: token ? `${token.substring(0, 20)}...` : null
+      tokenLength: token ? token.length : 0,
+      tokenPreview: token ? `${token.substring(0, 30)}...` : null,
+      authorizationHeader: req.headers.authorization
     });
 
     if (!token) {
@@ -36,8 +38,15 @@ const protect = async (req, res, next) => {
     }
 
     // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log('✅ Token decoded:', { userId: decoded.id, role: decoded.role });
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      console.log('✅ Token decoded successfully:', { userId: decoded.id, role: decoded.role, exp: decoded.exp });
+    } catch (tokenError) {
+      console.error('❌ Token verification failed:', tokenError.message);
+      return res.status(401).json({
+        message: 'Invalid token. Please log in again!'
+      });
+    }
 
     // Get user from token
     const currentUser = await UserPostgres.findById(decoded.id);
