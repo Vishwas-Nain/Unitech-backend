@@ -38,8 +38,9 @@ const protect = async (req, res, next) => {
     }
 
     // Verify token
+    let decoded;
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
       console.log('✅ Token decoded successfully:', { userId: decoded.id, role: decoded.role, exp: decoded.exp });
     } catch (tokenError) {
       console.error('❌ Token verification failed:', tokenError.message);
