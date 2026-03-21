@@ -2,6 +2,8 @@ const pool = require('../config/database');
 
 class ProductPostgres {
   static async findById(productId) {
+    console.log('📦 ProductPostgres.findById called with productId:', productId);
+    
     const query = `
       SELECT 
         id,
@@ -22,6 +24,15 @@ class ProductPostgres {
     
     try {
       const result = await pool.query(query, [productId]);
+      console.log('📦 ProductPostgres.findById result:', {
+        productId,
+        found: result.rows.length > 0,
+        product: result.rows.length > 0 ? {
+          id: result.rows[0].id,
+          name: result.rows[0].name,
+          stock: result.rows[0].stock
+        } : null
+      });
       
       if (result.rows.length === 0) {
         return null;
@@ -378,6 +389,5 @@ class ProductPostgres {
       throw error;
     }
   }
-}
 
 module.exports = ProductPostgres;

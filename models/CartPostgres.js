@@ -54,11 +54,18 @@ class CartPostgres {
   }
 
   static async addToCart(userId, productId, quantity) {
+    console.log('🛒 addToCart called with:', { userId, productId, quantity });
+    
     // Check if product exists and has stock using ProductPostgres
     const product = await ProductPostgres.findById(productId);
+    console.log('📦 Product lookup result:', {
+      productId,
+      productFound: !!product,
+      product: product ? { id: product.id, name: product.name, stock: product.stock } : null
+    });
     
     if (!product) {
-      throw new Error('Product not found');
+      throw new Error(`Product not found (ID: ${productId})`);
     }
     
     if (product.stock < quantity) {
