@@ -14,12 +14,14 @@ const router = express.Router();
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    console.log('❌ Order validation errors:', errors.array());
     return res.status(400).json({
       success: false,
       message: 'Validation failed',
       errors: errors.array().map(err => ({ field: err.param, message: err.msg }))
     });
   }
+  console.log('✅ Order validation passed');
   next();
 };
 
@@ -229,7 +231,12 @@ router.post('/',
         order
       });
     } catch (error) {
-      console.error('Create order error:', error);
+      console.error('❌ Create order error:', {
+        message: error.message,
+        stack: error.stack,
+        userId: req.user?.id,
+        body: req.body
+      });
       res.status(500).json({ 
         success: false,
         message: 'Failed to place order' 
