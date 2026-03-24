@@ -235,7 +235,17 @@ router.post('/',
         message: error.message,
         stack: error.stack,
         userId: req.user?.id,
-        body: req.body
+        cartItems: cart?.items?.length || 0,
+        orderData: {
+          items: cart?.items?.map(item => ({
+            product_id: item.product_id,
+            quantity: item.quantity,
+            price: item.price
+          })) || [],
+          shippingAddress,
+          paymentMethod,
+          totalAmount: cart?.totalPrice || 0
+        }
       });
       res.status(500).json({ 
         success: false,

@@ -2,6 +2,15 @@ const pool = require('../config/database');
 
 class OrderPostgres {
   static async create(userId, orderData) {
+    console.log('🛒 OrderPostgres.create called:', {
+      userId,
+      orderData: {
+        itemsCount: orderData.items?.length || 0,
+        paymentMethod: orderData.paymentMethod,
+        totalAmount: orderData.totalAmount
+      }
+    });
+    
     const { items, shippingAddress, paymentMethod, totalAmount } = orderData;
     
     const query = `
@@ -41,6 +50,15 @@ class OrderPostgres {
   }
 
   static async addOrderItem(orderId, item) {
+    console.log('🛒 OrderPostgres.addOrderItem called:', {
+      orderId,
+      item: {
+        product_id: item.product_id,
+        quantity: item.quantity,
+        price: item.price
+      }
+    });
+    
     const query = `
       INSERT INTO order_items (
         order_id, 
@@ -52,15 +70,16 @@ class OrderPostgres {
     `;
     
     try {
-      await pool.query(query, [
+      const result = await pool.query(query, [
         orderId,
         item.product_id,
         item.quantity,
         item.price
       ]);
+      return result.rows[0];
     } catch (error) {
-      console.error('Add order item error:', error);
-      throw new Error('Failed to add order item');
+      console.error('❌ OrderPostgres.addOrderItem error:', error);
+      throw error;
     }
   }
 
