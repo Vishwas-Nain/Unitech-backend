@@ -15,36 +15,39 @@ class OrderPostgres {
     
     const query = `
       INSERT INTO orders (
+        order_number,
         user_id, 
         status, 
-        total_amount, 
+        total, 
         shipping_address, 
         payment_method, 
+        order_items,
         created_at, 
         updated_at
-      ) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-      RETURNING id, user_id, status, total_amount, shipping_address, payment_method, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+      RETURNING id, user_id, status, total, shipping_address, payment_method, order_items, created_at, updated_at
     `;
     
     try {
+      // Generate order number
+      const orderNumber = 'ORD-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+      
       const result = await pool.query(query, [
+        orderNumber,
         userId,
         'pending',
         totalAmount,
         JSON.stringify(shippingAddress),
-        paymentMethod
+        paymentMethod,
+        JSON.stringify(items) // Store items as JSONB
       ]);
       
       const order = result.rows[0];
-      
-      // Insert order items
-      for (const item of items) {
-        await this.addOrderItem(order.id, item);
-      }
+      console.log('✅ Order created successfully:', { orderId: order.id, orderNumber });
       
       return order;
     } catch (error) {
-      console.error('Create order error:', error);
+      console.error('❌ Create order error:', error);
       throw new Error('Failed to create order');
     }
   }

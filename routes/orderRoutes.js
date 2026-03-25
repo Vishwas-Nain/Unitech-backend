@@ -200,7 +200,7 @@ router.post('/',
         price: item.price
       }));
 
-      // Create order
+      // Create order with items stored as JSONB
       const order = await OrderPostgres.create(req.user.id, {
         items: orderItems,
         shippingAddress,
@@ -208,6 +208,8 @@ router.post('/',
         paymentMethod,
         totalAmount: total
       });
+
+      console.log('✅ Order created:', { orderId: order.id });
 
       // Update product stock
       for (const item of orderItems) {
