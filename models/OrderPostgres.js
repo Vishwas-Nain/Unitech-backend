@@ -90,27 +90,17 @@ class OrderPostgres {
     const query = `
       SELECT 
         o.id,
+        o.order_number,
         o.user_id,
         o.status,
-        o.total_amount,
+        o.total,
         o.shipping_address,
         o.payment_method,
+        o.order_items,
         o.created_at,
-        o.updated_at,
-        json_agg(
-          json_build_object(
-            'product_id', oi.product_id,
-            'quantity', oi.quantity,
-            'price', oi.price,
-            'product_name', p.name,
-            'product_images', p.images
-          )
-        ) as items
+        o.updated_at
       FROM orders o
-      LEFT JOIN order_items oi ON o.id = oi.order_id
-      LEFT JOIN products p ON oi.product_id = p.id
       WHERE o.user_id = $1
-      GROUP BY o.id, o.user_id, o.status, o.total_amount, o.shipping_address, o.payment_method, o.created_at, o.updated_at
       ORDER BY o.created_at DESC
       LIMIT $2 OFFSET $3
     `;
@@ -118,13 +108,34 @@ class OrderPostgres {
     try {
       const result = await pool.query(query, [userId, limit, offset]);
       
-      return result.rows.map(row => ({
-        ...row,
-        items: row.items || [],
-        shippingAddress: typeof row.shipping_address === 'string' 
-          ? JSON.parse(row.shipping_address) 
-          : row.shipping_address
-      }));
+      return result.rows.map(row => {
+        // Parse JSONB order_items
+        let items = [];
+        if (row.order_items) {
+          try {
+            const orderItems = typeof row.order_items === 'string' 
+              ? JSON.parse(row.order_items) 
+              : row.order_items;
+            items = orderItems;
+          } catch (parseError) {
+            console.error('Error parsing order_items:', parseError);
+            items = [];
+          }
+        }
+        
+        return {
+          ...row,
+          items,
+          totalAmount: row.total, // Map total to totalAmount for consistency
+          shippingAddress: typeof row.shipping_address === 'string' 
+            ? JSON.parse(row.shipping_address) 
+            : row.shipping_address,
+          // Remove raw JSONB fields from response
+          order_items: undefined,
+          shipping_address: undefined,
+          total: undefined // Remove original total field
+        };
+      });
     } catch (error) {
       console.error('Get user orders error:', error);
       throw new Error('Failed to fetch user orders');
@@ -135,29 +146,19 @@ class OrderPostgres {
     const query = `
       SELECT 
         o.id,
+        o.order_number,
         o.user_id,
         o.status,
-        o.total_amount,
+        o.total,
         o.shipping_address,
         o.payment_method,
+        o.order_items,
         o.created_at,
         o.updated_at,
         u.name as user_name,
-        u.email as user_email,
-        json_agg(
-          json_build_object(
-            'product_id', oi.product_id,
-            'quantity', oi.quantity,
-            'price', oi.price,
-            'product_name', p.name,
-            'product_images', p.images
-          )
-        ) as items
+        u.email as user_email
       FROM orders o
-      LEFT JOIN order_items oi ON o.id = oi.order_id
-      LEFT JOIN products p ON oi.product_id = p.id
       LEFT JOIN users u ON o.user_id = u.id
-      GROUP BY o.id, o.user_id, o.status, o.total_amount, o.shipping_address, o.payment_method, o.created_at, o.updated_at, u.name, u.email
       ORDER BY o.created_at DESC
       LIMIT $1 OFFSET $2
     `;
@@ -165,13 +166,37 @@ class OrderPostgres {
     try {
       const result = await pool.query(query, [limit, offset]);
       
-      return result.rows.map(row => ({
-        ...row,
-        items: row.items || [],
-        shippingAddress: typeof row.shipping_address === 'string' 
-          ? JSON.parse(row.shipping_address) 
-          : row.shipping_address
-      }));
+      return result.rows.map(row => {
+        // Parse JSONB order_items and enrich with product data
+        let items = [];
+        if (row.order_items) {
+          try {
+            const orderItems = typeof row.order_items === 'string' 
+              ? JSON.parse(row.order_items) 
+              : row.order_items;
+            
+            // For now, return basic order items without product details
+            // TODO: Enrich with product data if needed
+            items = orderItems;
+          } catch (parseError) {
+            console.error('Error parsing order_items:', parseError);
+            items = [];
+          }
+        }
+        
+        return {
+          ...row,
+          items,
+          totalAmount: row.total, // Map total to totalAmount for consistency
+          shippingAddress: typeof row.shipping_address === 'string' 
+            ? JSON.parse(row.shipping_address) 
+            : row.shipping_address,
+          // Remove raw JSONB fields from response
+          order_items: undefined,
+          shipping_address: undefined,
+          total: undefined // Remove original total field
+        };
+      });
     } catch (error) {
       console.error('Get all orders error:', error);
       throw new Error('Failed to fetch all orders');
@@ -224,31 +249,20 @@ class OrderPostgres {
     const query = `
       SELECT 
         o.id,
+        o.order_number,
         o.user_id,
         o.status,
-        o.total_amount,
+        o.total,
         o.shipping_address,
         o.payment_method,
+        o.order_items,
         o.created_at,
         o.updated_at,
         u.name as user_name,
-        u.email as user_email,
-        json_agg(
-          json_build_object(
-            'product_id', oi.product_id,
-            'quantity', oi.quantity,
-            'price', oi.price,
-            'product_name', p.name,
-            'product_images', p.images,
-            'product_brand', p.brand
-          )
-        ) as items
+        u.email as user_email
       FROM orders o
-      LEFT JOIN order_items oi ON o.id = oi.order_id
-      LEFT JOIN products p ON oi.product_id = p.id
       LEFT JOIN users u ON o.user_id = u.id
       WHERE o.id = $1
-      GROUP BY o.id, o.user_id, o.status, o.total_amount, o.shipping_address, o.payment_method, o.created_at, o.updated_at, u.name, u.email
     `;
     
     try {
@@ -259,12 +273,32 @@ class OrderPostgres {
       }
       
       const order = result.rows[0];
+      
+      // Parse JSONB order_items
+      let items = [];
+      if (order.order_items) {
+        try {
+          const orderItems = typeof order.order_items === 'string' 
+            ? JSON.parse(order.order_items) 
+            : order.order_items;
+          items = orderItems;
+        } catch (parseError) {
+          console.error('Error parsing order_items:', parseError);
+          items = [];
+        }
+      }
+      
       return {
         ...order,
-        items: order.items || [],
+        items,
+        totalAmount: order.total, // Map total to totalAmount for consistency
         shippingAddress: typeof order.shipping_address === 'string' 
           ? JSON.parse(order.shipping_address) 
-          : order.shipping_address
+          : order.shipping_address,
+        // Remove raw JSONB fields from response
+        order_items: undefined,
+        shipping_address: undefined,
+        total: undefined // Remove original total field
       };
     } catch (error) {
       console.error('Get order by ID error:', error);

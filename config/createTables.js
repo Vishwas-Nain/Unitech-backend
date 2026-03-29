@@ -99,12 +99,38 @@ const createCartsTable = async () => {
   }
 };
 
+const createOrdersTable = async () => {
+  const query = `
+    CREATE TABLE IF NOT EXISTS orders (
+      id SERIAL PRIMARY KEY,
+      order_number VARCHAR(50) UNIQUE NOT NULL,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      status VARCHAR(20) DEFAULT 'pending',
+      total_amount DECIMAL(10,2) NOT NULL,
+      shipping_address JSONB NOT NULL,
+      payment_method VARCHAR(50) NOT NULL,
+      order_items JSONB NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
+
+  try {
+    await pool.query(query);
+    console.log('✅ Orders table created or already exists');
+  } catch (error) {
+    console.error('❌ Error creating orders table:', error);
+    throw error;
+  }
+};
+
 const initializeTables = async () => {
   try {
     await createUsersTable();
     await createProductsTable();
     await addSubcategoryColumn(); // Add migration for existing tables
     await createCartsTable();
+    await createOrdersTable(); // Add missing orders table
     console.log('🎉 All tables initialized successfully');
   } catch (error) {
     console.error('💥 Failed to initialize tables:', error);
@@ -115,5 +141,6 @@ module.exports = {
   initializeTables,
   createUsersTable,
   createProductsTable,
-  createCartsTable
+  createCartsTable,
+  createOrdersTable
 };
